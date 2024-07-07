@@ -19,6 +19,7 @@ from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
 from omni.isaac.lab.envs.ui import BaseEnvWindow
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sim import SimulationCfg
+from omni.isaac.lab.sensors import ContactSensor, ContactSensorCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils import motion_imitation_utils as miu
@@ -58,7 +59,7 @@ class ImitationPolicyA1EnvCfg(DirectRLEnvCfg):
     decimation = 4
     action_scale = 0.5
     num_actions = 12
-    num_observations = 24
+    num_observations = 93  # state(25) + action(12) + future_target_joints(12*4) + future_frames_euler_xy(2*4)
 
     # debug vis
     debug_vis = False
@@ -100,12 +101,21 @@ class ImitationPolicyA1EnvCfg(DirectRLEnvCfg):
 
     # robot
     robot: ArticulationCfg = UNITREE_A1_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    contact_sensor: ContactSensorCfg = ContactSensorCfg(
+        prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
+    )
 
     # animation
     animation: ArticulationCfg = UNITREE_A1_ANIM_CFG.replace(prim_path="/World/envs/env_.*/Animation")
 
     # reward scales
     dummy_reward_scale = 1.0
+
+    obs_scales = {
+        "lin_vel": 2.0,
+        "ang_vel": 0.25,
+    }
+    foot_contact_threshold = 1.0
 
 
 class ImitationPolicyA1Env(DirectRLEnv):
@@ -114,13 +124,14 @@ class ImitationPolicyA1Env(DirectRLEnv):
     def __init__(self, cfg: ImitationPolicyA1EnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
-        # Joint position command (deviation from default joint positions)
-        self._actions = torch.zeros(self.num_envs, self.cfg.num_actions, device=self.device)
-        self._previous_actions = torch.zeros(self.num_envs, self.cfg.num_actions, device=self.device)
 
         # create auxiliary variables for computing applied action, observations and rewards
         self.robot_dof_lower_limits = self._robot.data.soft_joint_pos_limits[0, :, 0].to(device=self.device)
         self.robot_dof_upper_limits = self._robot.data.soft_joint_pos_limits[0, :, 1].to(device=self.device)
+
+        # Get specific body indices
+        # ['trunk', 'FL_hip', 'FL_thigh', 'FL_calf', 'FL_foot', 'FR_hip', 'FR_thigh', 'FR_calf', 'FR_foot', 'RL_hip', 'RL_thigh', 'RL_calf', 'RL_foot', 'RR_hip', 'RR_thigh', 'RR_calf', 'RR_foot']
+        self._feet_ids, _ = self._contact_sensor.find_bodies(".*foot")
 
         self._load_motion(
             motion_path=os.path.join(os.getcwd(), self.cfg.motions_root, self.cfg.motion_fn),
@@ -132,6 +143,8 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
+        self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
+
         self._animation = Articulation(self.cfg.animation)
 
         # TODO: Change visual material of animation environment after make_uninstanceable
@@ -141,6 +154,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
         #     sim_utils.bind_visual_material(prim_path, material_path=?)
 
         self.scene.articulations["robot"] = self._robot
+        self.scene.sensors["contact_sensor"] = self._contact_sensor
         self.scene.articulations["animation"] = self._animation
 
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
@@ -156,20 +170,23 @@ class ImitationPolicyA1Env(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        self._actions: torch.Tensor = torch.zeros_like(actions)
+        self._actions = actions.clone()
+        
+        # TODO:  Uncomment this line to disable actions
+        self._actions = torch.zeros_like(self._actions)
 
-        joint_pos = self._robot.data.default_joint_pos + (self.cfg.action_scale * self._actions * 3.1415)
-        self._processed_actions = torch.clamp(joint_pos, self.robot_dof_lower_limits, self.robot_dof_upper_limits)
+        self._actions = self._robot.data.default_joint_pos + (self.cfg.action_scale * self._actions * 3.1415)
+        self._actions = torch.clamp(self._actions, self.robot_dof_lower_limits, self.robot_dof_upper_limits)
 
-        self._root_pose_anim = self.tensor_ref_root_pose[self.ref_motion_index].clone()
+        self._root_pose_anim = self.tensor_ref_root_pose[self.ref_motion_index]
         self._root_pose_anim[:, :3] += self._terrain.env_origins
-        self._root_vel_anim = self.tensor_ref_root_vels[self.ref_motion_index].clone()
-        self._joint_pos_anim = self.tensor_ref_pd_targets[self.ref_motion_index].clone()
-        self._joint_vel_anim = self.tensor_ref_pd_vels[self.ref_motion_index].clone()
+        self._root_vel_anim = self.tensor_ref_root_vels[self.ref_motion_index]
+        self._joint_pos_anim = self.tensor_ref_pd_targets[self.ref_motion_index]
+        self._joint_vel_anim = self.tensor_ref_pd_vels[self.ref_motion_index]
 
     def _apply_action(self):
-        self._robot.set_joint_position_target(self._processed_actions)
-
+        self._robot.set_joint_position_target(self._actions)
+        
         self._animation.write_root_pose_to_sim(self._root_pose_anim)
         self._animation.write_root_velocity_to_sim(self._root_vel_anim)
         self._animation.set_joint_position_target(self._joint_pos_anim)
@@ -177,6 +194,22 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
     def _get_observations(self) -> dict:
         self._previous_actions = self._actions.clone()
+        curr_state = self._get_current_state()
+        future_frames = self._get_future_frames()
+        future_frames_target_joints, future_frames_euler_xy = future_frames
+
+        obs = torch.cat(
+            [
+                tensor for tensor in (
+                    curr_state,
+                    self._actions,
+                    future_frames_target_joints,
+                    future_frames_euler_xy
+                )
+                if tensor is not None
+            ],
+            dim=-1
+        )
 
         obs = torch.zeros((self.num_envs, self.num_observations))
         observations = {"policy": obs}
@@ -241,8 +274,15 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
     ##############################################################################
     def _setup_utility_tensors(self):
+        # Joint position command (deviation from default joint positions)
+        self._actions = torch.zeros(self.num_envs, self.cfg.num_actions, device=self.device)
+        self._previous_actions = torch.zeros(self.num_envs, self.cfg.num_actions, device=self.device)
+
         # The current reference motion index, per actor.
         self.ref_motion_index = torch.zeros_like(self.episode_length_buf)
+
+        self.z_basis_vec = torch.zeros((self.num_envs, 3), dtype=torch.float, device=self.device, requires_grad=False)
+        self.z_basis_vec[:, 2] = 1.0
 
     def _init_debug(self):
         self.debug_cam_pos = np.array([0.7, 1.5, 0.7])
@@ -346,3 +386,79 @@ class ImitationPolicyA1Env(DirectRLEnv):
         # Used to increment from current index to get future target poses from
         # the reference motion.
         self.target_pose_inc_indices = torch.tensor(lookahead_inds, dtype=torch.long, device=self.device)
+        self.len_target_pose_inc = len(self.target_pose_inc_indices)
+
+    def _get_robot_euler_xyz(self) -> torch.Tensor:
+        robot_euler_xyz = math_utils.euler_xyz_from_quat(self._robot.data.root_quat_w)
+        robot_roll, robot_pitch, robot_yaw = robot_euler_xyz
+
+        robot_roll = math_utils.wrap_to_pi(robot_roll)
+        robot_pitch = math_utils.wrap_to_pi(robot_pitch)
+        robot_yaw = math_utils.wrap_to_pi(robot_yaw)
+
+        return torch.cat([
+            robot_roll.unsqueeze(-1),
+            robot_pitch.unsqueeze(-1),
+            robot_yaw.unsqueeze(-1),
+        ], dim=-1)
+
+    def _get_foot_contacts(self) -> torch.Tensor:
+        net_contact_forces = self._contact_sensor.data.net_forces_w_history
+        fl_foot_contact = torch.max(torch.norm(net_contact_forces[:, :, self._feet_ids[0]], dim=-1), dim=1)[0] >= self.cfg.foot_contact_threshold
+        fr_foot_contact = torch.max(torch.norm(net_contact_forces[:, :, self._feet_ids[1]], dim=-1), dim=1)[0] >= self.cfg.foot_contact_threshold
+        rl_foot_contact = torch.max(torch.norm(net_contact_forces[:, :, self._feet_ids[2]], dim=-1), dim=1)[0] >= self.cfg.foot_contact_threshold
+        rr_foot_contact = torch.max(torch.norm(net_contact_forces[:, :, self._feet_ids[3]], dim=-1), dim=1)[0] >= self.cfg.foot_contact_threshold
+
+        return torch.cat([
+            fl_foot_contact.unsqueeze(-1),
+            fr_foot_contact.unsqueeze(-1),
+            rl_foot_contact.unsqueeze(-1),
+            rr_foot_contact.unsqueeze(-1),
+        ], dim=-1)
+
+    def _get_current_state(self) -> torch.Tensor:
+        robot_euler_xyz = self._get_robot_euler_xyz()
+        foot_contacts = self._get_foot_contacts()
+
+        return torch.cat(
+            [
+                tensor for tensor in (
+                    robot_euler_xyz,  # num_envs x 3
+                    self._robot.data.root_lin_vel_b * self.cfg.obs_scales["lin_vel"],  # Try without scale
+                    self._robot.data.root_ang_vel_b * self.cfg.obs_scales["ang_vel"],
+                    self._robot.data.joint_pos,  # Try with substracting with default joint pos
+                    foot_contacts,  # num_envs x 4
+                )
+                if tensor is not None
+            ],
+            dim=-1
+        )
+
+    def _get_future_frames(self) -> tuple[torch.Tensor, torch.Tensor]:
+        inv_heading_rot = math_utils.quat_from_angle_axis(
+            self._robot.data.heading_w,
+            self.z_basis_vec,
+        )
+        future_indices = self.ref_motion_index.unsqueeze(1) + self.target_pose_inc_indices
+        future_target_frames = self.tensor_ref_pose[future_indices, 3:]
+
+        # normalize orientation
+        future_frames_euler_xy = torch.zeros((self.num_envs, self.len_target_pose_inc, 2), dtype=torch.float32, device=self.device)
+        for idx_frame in range(self.len_target_pose_inc):
+            current_frame_quat = future_target_frames[:, idx_frame, :4]
+            current_frame_quat = math_utils.quat_mul(inv_heading_rot, current_frame_quat)
+            current_frame_quat = math_utils.normalize(current_frame_quat)
+
+            current_frame_euler_xyz = math_utils.euler_xyz_from_quat(current_frame_quat)
+            frame_roll, frame_pitch, _ = current_frame_euler_xyz
+            future_frames_euler_xy[:, idx_frame, 0] = math_utils.wrap_to_pi(frame_roll)
+            future_frames_euler_xy[:, idx_frame, 1] = math_utils.wrap_to_pi(frame_pitch)
+
+        # flatten future frames euler xy
+        future_frames_euler_xy = future_frames_euler_xy.reshape(-1, 2 * self.len_target_pose_inc)
+
+        # flatten future target dofs
+        future_target_joints = future_target_frames[:, :, 4:].reshape(-1, self.cfg.num_actions * self.len_target_pose_inc)
+
+        # TODO: contacenating future_target_joints and future_frames_euler_xy into a future frames tensor
+        return future_target_joints, future_frames_euler_xy
