@@ -89,6 +89,11 @@ def normalize(x: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
         Normalized tensor of shape (N, dims).
     """
     return x / x.norm(p=2, dim=-1).clamp(min=eps, max=None).unsqueeze(-1)
+    
+
+@torch.jit.script
+def normalize_angle(x):
+    return torch.atan2(torch.sin(x), torch.cos(x))
 
 
 @torch.jit.script
