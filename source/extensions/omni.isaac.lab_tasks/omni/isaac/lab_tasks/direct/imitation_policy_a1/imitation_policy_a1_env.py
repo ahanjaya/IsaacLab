@@ -174,16 +174,12 @@ class ImitationPolicyA1Env(DirectRLEnv):
         
         # TODO:  Uncomment this line to disable actions
         self._actions = torch.zeros_like(self._actions)
-
         self._actions = self._robot.data.default_joint_pos + (self.cfg.action_scale * self._actions * 3.1415)
         self._actions = torch.clamp(self._actions, self.robot_dof_lower_limits, self.robot_dof_upper_limits)
 
-        self._root_pose_anim = self.tensor_ref_root_pose[self.ref_motion_index]
-        self._root_pose_anim[:, :3] += self._terrain.env_origins
-        self._root_vel_anim = self.tensor_ref_root_vels[self.ref_motion_index]
-        self._joint_pos_anim = self.tensor_ref_pd_targets[self.ref_motion_index]
-        self._joint_vel_anim = self.tensor_ref_pd_vels[self.ref_motion_index]
-
+        # Update animation
+        self._update_animation()
+    
     def _apply_action(self):
         self._robot.set_joint_position_target(self._actions)
         
@@ -248,6 +244,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
         self._actions[env_ids] = 0.0
         self.ref_motion_index[env_ids] = 0
+        self.tensor_ref_offset_pos[env_ids, :] = 0.0
 
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
@@ -388,6 +385,25 @@ class ImitationPolicyA1Env(DirectRLEnv):
         self.target_pose_inc_indices = torch.tensor(lookahead_inds, dtype=torch.long, device=self.device)
         self.len_target_pose_inc = len(self.target_pose_inc_indices)
 
+    def _update_animation(self):
+        self._root_pose_anim = self.tensor_ref_root_pose[self.ref_motion_index]
+        self._root_pose_anim[:, :3] += self._terrain.env_origins
+
+        # Compute accumulated offset over episode. Only update on cycle ends.
+        # Note: Offsets are only computed for x and y. z (height) is ignored.
+        curr_phase = self.episode_length_buf // self.motion_length > 0
+        reset_phase = (self.episode_length_buf % self.motion_length) == 0
+        resync_env_ids = curr_phase.logical_and(reset_phase).nonzero(as_tuple=False).flatten()
+
+        self.tensor_ref_offset_pos[resync_env_ids, :2] = (
+            self._root_pose_anim[resync_env_ids, :2] - self._robot.data.root_state_w[resync_env_ids, :2]
+        )
+        self._root_pose_anim[:, :3] -= self.tensor_ref_offset_pos
+
+        self._root_vel_anim = self.tensor_ref_root_vels[self.ref_motion_index]
+        self._joint_pos_anim = self.tensor_ref_pd_targets[self.ref_motion_index]
+        self._joint_vel_anim = self.tensor_ref_pd_vels[self.ref_motion_index]
+
     def _get_robot_euler_xyz(self) -> torch.Tensor:
         robot_euler_xyz = math_utils.euler_xyz_from_quat(self._robot.data.root_quat_w)
         robot_roll, robot_pitch, robot_yaw = robot_euler_xyz
@@ -462,3 +478,8 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
         # TODO: contacenating future_target_joints and future_frames_euler_xy into a future frames tensor
         return future_target_joints, future_frames_euler_xy
+
+        # return torch.cat([
+        #     future_target_joints,
+        #     future_frames_euler_xy,
+        # ], dim=-1)
