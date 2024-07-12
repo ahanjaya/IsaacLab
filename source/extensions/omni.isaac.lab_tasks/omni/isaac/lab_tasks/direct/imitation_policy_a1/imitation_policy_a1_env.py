@@ -50,7 +50,7 @@ class ImitationPolicyA1EnvWindow(BaseEnvWindow):
             with self.ui_window_elements["debug_frame"]:
                 with self.ui_window_elements["debug_vstack"]:
                     # add command manager visualization
-                    self._create_debug_vis_ui_element("Follow Cam", self.env)
+                    self._create_debug_vis_ui_element("Debug", self.env)
 
 
 @configclass
@@ -64,6 +64,8 @@ class ImitationPolicyA1EnvCfg(DirectRLEnvCfg):
 
     # debug vis
     debug_vis = True
+    follow_cam = True
+    visualize_markers = False
     ui_window_class_type = ImitationPolicyA1EnvWindow
 
     # motions
@@ -240,7 +242,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
         obs = torch.cat(
             [
                 curr_state,
-                self._actions,
+                self.actions,
                 future_frames,
             ],
             dim=1
@@ -316,7 +318,6 @@ class ImitationPolicyA1Env(DirectRLEnv):
         self._actions[env_ids] = 0.0
         self.ref_motion_index[env_ids] = 0
         self.tensor_ref_offset_pos[env_ids, :] = 0.0
-        self.actions[env_ids] = 0.0
 
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
@@ -348,37 +349,35 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         if debug_vis:
-            self.debug_cam_pos = np.array([0.7, 1.5, 0.7])
-            self.debug_cam_target = np.array([0.5, 0.0, 0])
-            self.debug_cam_offset = np.array([0.0, -1.0, 0.20])
-            self.k_smooth = 0.9
-            self.i_follow_env = 0
+            # TODO: Connect this flag with the UI element
+            if self.cfg.follow_cam:
+                self.debug_cam_pos = np.array([0.7, 1.5, 0.7])
+                self.debug_cam_target = np.array([0.5, 0.0, 0])
+                self.debug_cam_offset = np.array([0.0, -1.0, 0.20])
+                self.k_smooth = 0.9
+                self.i_follow_env = 0
+            
+            # TODO: Connect this flag with the UI element
+            if self.cfg.visualize_markers:
+                marker_cfg = BLUE_ARROW_X_MARKER_CFG.copy()
+                marker_cfg.markers["arrow"].scale = (0.1, 0.1, 0.15)
+                marker_cfg.prim_path = "/Visuals/Robot/body_pose"
+                self.robot_pose_visualizer = VisualizationMarkers(marker_cfg)
 
-            marker_cfg = BLUE_ARROW_X_MARKER_CFG.copy()
-            marker_cfg.markers["arrow"].scale = (0.1, 0.1, 0.15)
-            marker_cfg.prim_path = "/Visuals/Robot/body_pose"
-            self.robot_pose_visualizer = VisualizationMarkers(marker_cfg)
+                marker_cfg = GREEN_ARROW_X_MARKER_CFG.copy()
+                marker_cfg.markers["arrow"].scale = (0.1, 0.1, 0.15)
+                marker_cfg.prim_path = "/Visuals/Animation/body_pose"
+                self.animation_pose_visualizer = VisualizationMarkers(marker_cfg)
 
-            marker_cfg = GREEN_ARROW_X_MARKER_CFG.copy()
-            marker_cfg.markers["arrow"].scale = (0.1, 0.1, 0.15)
-            marker_cfg.prim_path = "/Visuals/Animation/body_pose"
-            self.animation_pose_visualizer = VisualizationMarkers(marker_cfg)
-
-            self.robot_pose_visualizer.set_visibility(True)
-            # self.animation_pose_visualizer.set_visibility(True)
+                self.robot_pose_visualizer.set_visibility(True)
+                self.animation_pose_visualizer.set_visibility(True)
 
     def _debug_vis_callback(self, event):
         # update camera view
         self._update_debug_camera()
 
         # update markers
-        robot_root_pose_w = self._robot.data.root_state_w
-        robot_root_pose_w[:, 2] += 0.1
-        self.robot_pose_visualizer.visualize(robot_root_pose_w[:, :3], robot_root_pose_w[:, 3:7])
-
-        animation_root_pose_w = self._animation.data.root_state_w
-        animation_root_pose_w[:, 2] += 0.1
-        self.animation_pose_visualizer.visualize(animation_root_pose_w[:, :3], animation_root_pose_w[:, 3:7])
+        self._update_debug_marker()
 
     ##############################################################################
     def _setup_utility_tensors(self):
@@ -392,6 +391,9 @@ class ImitationPolicyA1Env(DirectRLEnv):
         self.z_basis_vec[:, 2] = 1.0
 
     def _update_debug_camera(self):
+        if not self.cfg.follow_cam:
+            return
+
         actor_pos = self._robot.data.root_pos_w[self.i_follow_env].cpu().numpy()
 
         # Smooth the camera movement with a moving average.
@@ -402,6 +404,18 @@ class ImitationPolicyA1Env(DirectRLEnv):
         self.debug_cam_target = self.k_smooth * self.debug_cam_target + (1 - self.k_smooth) * new_cam_target
 
         set_camera_view(self.debug_cam_pos, self.debug_cam_target)
+
+    def _update_debug_marker(self):
+        if not self.cfg.visualize_markers:
+            return
+
+        robot_root_pose_w = self._robot.data.root_state_w
+        robot_root_pose_w[:, 2] += 0.1
+        self.robot_pose_visualizer.visualize(robot_root_pose_w[:, :3], robot_root_pose_w[:, 3:7])
+
+        animation_root_pose_w = self._animation.data.root_state_w
+        animation_root_pose_w[:, 2] += 0.1
+        self.animation_pose_visualizer.visualize(animation_root_pose_w[:, :3], animation_root_pose_w[:, 3:7])
 
     def _load_motion(self, motion_path):
         """Loads a reference motion from disk. Pre-generates all frames and push
