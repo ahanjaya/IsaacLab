@@ -50,7 +50,7 @@ class ImitationPolicyA1EnvWindow(BaseEnvWindow):
             with self.ui_window_elements["debug_frame"]:
                 with self.ui_window_elements["debug_vstack"]:
                     # add command manager visualization
-                    self._create_debug_vis_ui_element("Debug", self.env)
+                    self._create_debug_vis_ui_element("Follow Cam", self.env)
 
 
 @configclass
@@ -105,7 +105,7 @@ class ImitationPolicyA1EnvCfg(DirectRLEnvCfg):
     # robot
     robot: ArticulationCfg = UNITREE_A1_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
+        prim_path="/World/envs/env_.*/Robot/.*", history_length=1, update_period=0.0,
     )
 
     # animation
@@ -123,7 +123,7 @@ class ImitationPolicyA1EnvCfg(DirectRLEnvCfg):
     scale_ef = 40.0
     scale_root_pose = 20.0
     scale_root_vel = 2.0
-    height_err_scale = 3.0
+    scale_err_height = 3.0
 
     obs_scales = {
         "lin_vel": 2.0,
@@ -210,10 +210,10 @@ class ImitationPolicyA1Env(DirectRLEnv):
     def _apply_action(self):
         self._robot.set_joint_position_target(self._actions)
 
-        self._animation.set_joint_position_target(self._joint_pos_anim)
-        self._animation.set_joint_velocity_target(self._joint_vel_anim)
-        self._animation.write_root_pose_to_sim(self._root_pos_anim)
-        self._animation.write_root_velocity_to_sim(self._root_vel_anim)
+        self._animation.set_joint_position_target(self._anim_joint_pos)
+        self._animation.set_joint_velocity_target(self._anim_joint_vel)
+        self._animation.write_root_pose_to_sim(self._anim_root_pos)
+        self._animation.write_root_velocity_to_sim(self._anim_root_vel)
 
     def _get_observations(self) -> dict:
         curr_state = compute_agent_state(
@@ -221,7 +221,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
             self._robot.data.root_lin_vel_b,
             self._robot.data.root_ang_vel_b,
             self._robot.data.joint_pos,
-            self._contact_sensor.data.net_forces_w_history,
+            self._contact_sensor.data.net_forces_w,
             self._foot_ids,
             self.cfg.obs_scales["lin_vel"],
             self.cfg.obs_scales["ang_vel"],
@@ -242,7 +242,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
         obs = torch.cat(
             [
                 curr_state,
-                self.actions,
+                self._actions,
                 future_frames,
             ],
             dim=1
@@ -264,7 +264,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
             self._animation.data.root_ang_vel_b, self._robot.data.root_ang_vel_b,
             self.cfg.scale_joint_pos, self.cfg.weight_joint_pos,
             self.cfg.scale_joint_vel, self.cfg.weight_joint_vel,
-            self.cfg.height_err_scale,
+            self.cfg.scale_err_height,
             self.cfg.scale_ef, self.cfg.weight_ef,
             self.cfg.scale_root_pose, self.cfg.weight_root_pose,
             self.cfg.scale_root_vel, self.cfg.weight_root_vel,
@@ -309,6 +309,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
         self._robot.reset(env_ids)
         self._animation.reset(env_ids)
+        self._contact_sensor.reset(env_ids)
         super()._reset_idx(env_ids)
 
         # if len(env_ids) == self.num_envs:
@@ -356,7 +357,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
                 self.debug_cam_offset = np.array([0.0, -1.0, 0.20])
                 self.k_smooth = 0.9
                 self.i_follow_env = 0
-            
+
             # TODO: Connect this flag with the UI element
             if self.cfg.visualize_markers:
                 marker_cfg = BLUE_ARROW_X_MARKER_CFG.copy()
@@ -503,8 +504,8 @@ class ImitationPolicyA1Env(DirectRLEnv):
         self.len_target_pose_inc = len(self.target_pose_inc_indices)
 
     def _update_animation(self):
-        self._root_pos_anim = self.tensor_ref_root_pose[self.ref_motion_index]
-        self._root_pos_anim[:, :3] += self._terrain.env_origins
+        self._anim_root_pos = self.tensor_ref_root_pose[self.ref_motion_index]
+        self._anim_root_pos[:, :3] += self._terrain.env_origins
 
         # Compute accumulated offset over episode. Only update on cycle ends.
         # Note: Offsets are only computed for x and y. z (height) is ignored.
@@ -513,21 +514,21 @@ class ImitationPolicyA1Env(DirectRLEnv):
         resync_env_ids = curr_phase.logical_and(reset_phase).nonzero(as_tuple=False).flatten()
 
         self.tensor_ref_offset_pos[resync_env_ids, :2] = (
-            self._root_pos_anim[resync_env_ids, :2] - self._robot.data.root_pos_w[resync_env_ids, :2]
+            self._anim_root_pos[resync_env_ids, :2] - self._robot.data.root_pos_w[resync_env_ids, :2]
         )
-        self._root_pos_anim[:, :3] -= self.tensor_ref_offset_pos
+        self._anim_root_pos[:, :3] -= self.tensor_ref_offset_pos
 
-        self._root_vel_anim = self.tensor_ref_root_vels[self.ref_motion_index]
-        self._joint_pos_anim = self.tensor_ref_joint_targets[self.ref_motion_index]
-        self._joint_vel_anim = self.tensor_ref_joint_vels[self.ref_motion_index]
+        self._anim_root_vel = self.tensor_ref_root_vels[self.ref_motion_index]
+        self._anim_joint_pos = self.tensor_ref_joint_targets[self.ref_motion_index]
+        self._anim_joint_vel = self.tensor_ref_joint_vels[self.ref_motion_index]
 
     def _check_contacts(self) -> torch.Tensor:
         # check reset contact for all bodies except foot
-        net_contact_forces = self._contact_sensor.data.net_forces_w_history
-        body_contact = torch.max(torch.norm(net_contact_forces[:, :, self._body_idx], dim=-1), dim=1)[0] >= self.cfg.reset_contact_threshold
-        hip_contact = torch.max(torch.norm(net_contact_forces[:, :, self._hip_ids], dim=-1), dim=1)[0] >= self.cfg.reset_contact_threshold
-        thigh_contact = torch.max(torch.norm(net_contact_forces[:, :, self._thigh_ids], dim=-1), dim=1)[0] >= self.cfg.reset_contact_threshold
-        calf_contact = torch.max(torch.norm(net_contact_forces[:, :, self._calf_ids], dim=-1), dim=1)[0] >= self.cfg.reset_contact_threshold
+        net_contact_forces = self._contact_sensor.data.net_forces_w
+        body_contact = torch.norm(net_contact_forces[:, self._body_idx, :], dim=1) >= self.cfg.reset_contact_threshold
+        hip_contact = torch.norm(net_contact_forces[:, self._hip_ids, :], dim=1) >= self.cfg.reset_contact_threshold
+        thigh_contact = torch.norm(net_contact_forces[:, self._thigh_ids, :], dim=1) >= self.cfg.reset_contact_threshold
+        calf_contact = torch.norm(net_contact_forces[:, self._calf_ids, :], dim=1) >= self.cfg.reset_contact_threshold
 
         all_contacts = torch.cat([body_contact, hip_contact, thigh_contact, calf_contact], dim=-1)
 
@@ -553,10 +554,10 @@ def compute_agent_state(
     robot_pitch = math_utils.wrap_to_pi(robot_pitch)
     robot_yaw = math_utils.wrap_to_pi(robot_yaw)
 
-    fl_foot_contact = torch.max(torch.norm(net_contact_forces[:, :, foot_ids[0]], dim=-1), dim=1)[0] >= foot_contact_threshold
-    fr_foot_contact = torch.max(torch.norm(net_contact_forces[:, :, foot_ids[1]], dim=-1), dim=1)[0] >= foot_contact_threshold
-    rl_foot_contact = torch.max(torch.norm(net_contact_forces[:, :, foot_ids[2]], dim=-1), dim=1)[0] >= foot_contact_threshold
-    rr_foot_contact = torch.max(torch.norm(net_contact_forces[:, :, foot_ids[3]], dim=-1), dim=1)[0] >= foot_contact_threshold
+    fl_foot_contact = torch.norm(net_contact_forces[:, foot_ids[0], :], dim=1) >= foot_contact_threshold
+    fr_foot_contact = torch.norm(net_contact_forces[:, foot_ids[1], :], dim=1) >= foot_contact_threshold
+    rl_foot_contact = torch.norm(net_contact_forces[:, foot_ids[2], :], dim=1) >= foot_contact_threshold
+    rr_foot_contact = torch.norm(net_contact_forces[:, foot_ids[3], :], dim=1) >= foot_contact_threshold
 
     return torch.cat([
         robot_roll.unsqueeze(-1),
