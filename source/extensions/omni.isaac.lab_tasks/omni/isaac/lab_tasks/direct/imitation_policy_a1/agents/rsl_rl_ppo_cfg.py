@@ -15,7 +15,7 @@ from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
 @configclass
 class ImitationPolicyA1PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 2100
+    max_iterations = 1600
     save_interval = 100
     experiment_name = "imitation_policy_a1_direct"
     empirical_normalization = False
@@ -34,7 +34,7 @@ class ImitationPolicyA1PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         num_mini_batches=4,
         learning_rate=1.0e-3,
         schedule="adaptive",
-        gamma=0.99,
+        gamma=0.95,
         lam=0.95,
         desired_kl=0.01,
         max_grad_norm=1.0,
