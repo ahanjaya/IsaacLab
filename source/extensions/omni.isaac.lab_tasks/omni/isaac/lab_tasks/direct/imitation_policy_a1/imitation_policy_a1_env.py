@@ -112,14 +112,14 @@ class ImitationPolicyA1EnvCfg(DirectRLEnvCfg):
     animation: ArticulationCfg = UNITREE_A1_ANIM_CFG.replace(prim_path="/World/envs/env_.*/Animation")
 
     # reward scales
-    weight_dof_pos = 0.5
-    weight_dof_vel = 0.05
+    weight_joint_pos = 0.5
+    weight_joint_vel = 0.05
     weight_ef = 0.2
     weight_root_pose = 0.15
     weight_root_vel = 0.1
 
-    scale_dof_pos = 5.0
-    scale_dof_vel = 0.1
+    scale_joint_pos = 5.0
+    scale_joint_vel = 0.1
     scale_ef = 40.0
     scale_root_pose = 20.0
     scale_root_vel = 2.0
@@ -141,8 +141,8 @@ class ImitationPolicyA1Env(DirectRLEnv):
         super().__init__(cfg, render_mode, **kwargs)
 
         # create auxiliary variables for computing applied action, observations and rewards
-        self.robot_dof_lower_limits = self._robot.data.default_joint_limits[0, :, 0].to(device=self.device)
-        self.robot_dof_upper_limits = self._robot.data.default_joint_limits[0, :, 1].to(device=self.device)
+        self.robot_joint_lower_limits = self._robot.data.default_joint_limits[0, :, 0].to(device=self.device)
+        self.robot_joint_upper_limits = self._robot.data.default_joint_limits[0, :, 1].to(device=self.device)
 
         # Get specific body indices
         # ['trunk', 'FL_hip', 'FL_thigh', 'FL_calf', 'FL_foot', 'FR_hip', 'FR_thigh', 'FR_calf', 'FR_foot', 'RL_hip', 'RL_thigh', 'RL_calf', 'RL_foot', 'RR_hip', 'RR_thigh', 'RR_calf', 'RR_foot']
@@ -162,9 +162,9 @@ class ImitationPolicyA1Env(DirectRLEnv):
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
             for key in [
-                "dof_pos",
-                "dof_vel",
-                "ef",
+                "joint_pos",
+                "joint_vel",
+                "end_effector_pos",
                 "root_pose",
                 "root_vel",
             ]
@@ -202,7 +202,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor):
         processed_actions = actions * self.cfg.action_scale * 3.1415 + self._robot.data.default_joint_pos
-        self._actions = torch.clamp(processed_actions, self.robot_dof_lower_limits, self.robot_dof_upper_limits)
+        self._actions = torch.clamp(processed_actions, self.robot_joint_lower_limits, self.robot_joint_upper_limits)
 
         # Update animation
         self._update_animation()
@@ -262,8 +262,8 @@ class ImitationPolicyA1Env(DirectRLEnv):
             self.z_basis_vec, self.len_foot,
             self._animation.data.root_lin_vel_b, self._robot.data.root_lin_vel_b,
             self._animation.data.root_ang_vel_b, self._robot.data.root_ang_vel_b,
-            self.cfg.scale_dof_pos, self.cfg.weight_dof_pos,
-            self.cfg.scale_dof_vel, self.cfg.weight_dof_vel,
+            self.cfg.scale_joint_pos, self.cfg.weight_joint_pos,
+            self.cfg.scale_joint_vel, self.cfg.weight_joint_vel,
             self.cfg.height_err_scale,
             self.cfg.scale_ef, self.cfg.weight_ef,
             self.cfg.scale_root_pose, self.cfg.weight_root_pose,
@@ -487,9 +487,9 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
         # Create other useful views.
         self.tensor_ref_root_pose = self.tensor_ref_pose[:, :7]  # XYZ + Quat
-        self.tensor_ref_pd_targets = self.tensor_ref_pose[:, 7:]  # 12 joints
+        self.tensor_ref_joint_targets = self.tensor_ref_pose[:, 7:]  # 12 joints
         self.tensor_ref_root_vels = self.tensor_ref_vels[:, :6]  # Linear XYZ + Angular XYZ
-        self.tensor_ref_pd_vels = self.tensor_ref_vels[:, 6:]
+        self.tensor_ref_joint_vels = self.tensor_ref_vels[:, 6:]
 
         # Used to sync the postion of kin character to sim character by offseting
         # its position.
@@ -518,8 +518,8 @@ class ImitationPolicyA1Env(DirectRLEnv):
         self._root_pos_anim[:, :3] -= self.tensor_ref_offset_pos
 
         self._root_vel_anim = self.tensor_ref_root_vels[self.ref_motion_index]
-        self._joint_pos_anim = self.tensor_ref_pd_targets[self.ref_motion_index]
-        self._joint_vel_anim = self.tensor_ref_pd_vels[self.ref_motion_index]
+        self._joint_pos_anim = self.tensor_ref_joint_targets[self.ref_motion_index]
+        self._joint_vel_anim = self.tensor_ref_joint_vels[self.ref_motion_index]
 
     def _check_contacts(self) -> torch.Tensor:
         # check reset contact for all bodies except foot
@@ -610,7 +610,7 @@ def compute_future_frames(
     # flatten future frames euler xy
     future_frames_euler_xy = future_frames_euler_xy.reshape(-1, 2 * len_target_pose_inc)
 
-    # flatten future target dofs
+    # flatten future target joints
     future_target_joints = future_target_frames[:, :, 4:].reshape(-1, num_actions * len_target_pose_inc)
 
     return torch.cat(
@@ -641,11 +641,11 @@ def compute_rewards(
     scale_root_vel: float, weight_root_vel: float,
 
 ):
-    # DoF pos reward.
+    # Joint pos reward.
     joint_pos_diff = torch.square(animation_joint_pos - robot_joint_pos)
     joint_pos_rew = torch.exp(-scale_joint_pos * joint_pos_diff.sum(dim=1))
 
-    # DoF velocity reward.
+    # Joint velocity reward.
     joint_vel_diff = torch.square(animation_joint_vel - robot_joint_vel)
     joint_vel_rew = torch.exp(-scale_joint_vel * joint_vel_diff.sum(dim=1))
 
@@ -697,9 +697,9 @@ def compute_rewards(
 
     # TODO: all rewards multiply with step_dt
     rewards = {
-        "dof_pos": joint_pos_rew * weight_joint_pos,
-        "dof_vel": joint_vel_rew * weight_joint_vel,
-        "ef": ef_rew * weight_ef,
+        "joint_pos": joint_pos_rew * weight_joint_pos,
+        "joint_vel": joint_vel_rew * weight_joint_vel,
+        "end_effector_pos": ef_rew * weight_ef,
         "root_pose": root_pose_rew * weight_root_pose,
         "root_vel": root_vel_rew * weight_root_vel,
     }
