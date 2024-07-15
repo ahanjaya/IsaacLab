@@ -5,20 +5,17 @@
 
 from omni.isaac.lab.utils import configclass
 
-from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (
-    RslRlOnPolicyRunnerCfg,
-    RslRlPpoActorCriticCfg,
-    RslRlPpoAlgorithmCfg,
-)
+from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import (RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg,
+                                                        RslRlPpoAlgorithmCfg)
 
 
 @configclass
 class ImitationPolicyA1PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 1600
+    max_iterations = 1500
     save_interval = 100
     experiment_name = "imitation_policy_a1_direct"
-    empirical_normalization = False
+    empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
         actor_hidden_dims=[512, 256],
