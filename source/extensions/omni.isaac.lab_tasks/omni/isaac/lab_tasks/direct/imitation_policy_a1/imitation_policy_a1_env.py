@@ -68,8 +68,9 @@ class ImitationPolicyA1EnvCfg(DirectRLEnvCfg):
     num_observations = 93  # state(25) + action(12) + future_target_joints(12*4) + future_frames_euler_xy(2*4)
     z_offset = 0.0
 
-    # debug vis
-    debug_vis = False
+    # debug visualization
+    debug_vis = True
+    debug_marker = False
     ui_window_class_type = ImitationPolicyA1EnvWindow
 
     # motions
@@ -100,7 +101,7 @@ class ImitationPolicyA1EnvCfg(DirectRLEnvCfg):
             dynamic_friction=1.0,
             restitution=0.0,
         ),
-        debug_vis=False,
+        debug_vis=debug_marker,
     )
 
     # scene
@@ -116,6 +117,7 @@ class ImitationPolicyA1EnvCfg(DirectRLEnvCfg):
         prim_path="/World/envs/env_.*/Robot/.*",
         history_length=1,
         update_period=0.0,
+        debug_vis=debug_marker,
     )
 
     # animation
@@ -324,8 +326,6 @@ class ImitationPolicyA1Env(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         self.ref_motion_index += 1
-        # update camera view
-        self._update_camera_follow_env()
 
         time_outs = self.episode_length_buf >= self.max_episode_length - 1
 
@@ -406,7 +406,7 @@ class ImitationPolicyA1Env(DirectRLEnv):
         self.extras["log"].update(extras)
 
     def _set_debug_vis_impl(self, debug_vis: bool):
-        if debug_vis:
+        if self.cfg.debug_marker:
             if not hasattr(self, "robot_pose_visualizer"):
                 marker_cfg = BLUE_ARROW_X_MARKER_CFG.copy()
                 marker_cfg.markers["arrow"].scale = (0.1, 0.1, 0.15)
@@ -426,6 +426,9 @@ class ImitationPolicyA1Env(DirectRLEnv):
                 self.animation_pose_visualizer.set_visibility(False)
 
     def _debug_vis_callback(self, event):
+        # update camera view
+        self._update_camera_follow_env()
+
         # update markers
         self._update_debug_marker()
 
@@ -472,6 +475,9 @@ class ImitationPolicyA1Env(DirectRLEnv):
         set_camera_view(self.follow_cam_pos, self.follow_cam_target)
 
     def _update_debug_marker(self):
+        if not self.cfg.debug_marker:
+            return
+
         robot_root_pose_w = self._robot.data.root_state_w
         robot_root_pose_w[:, 2] += 0.1
         self.robot_pose_visualizer.visualize(
