@@ -5,12 +5,17 @@
 
 from __future__ import annotations
 
+import cv2
 import torch
+import numpy as np
+from collections.abc import Sequence
+from torchvision.utils import make_grid
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
 from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
 from omni.isaac.lab.scene import InteractiveSceneCfg
+from omni.isaac.lab.sensors import Camera, CameraCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
@@ -19,7 +24,7 @@ from omni.isaac.lab.utils import configclass
 # Pre-defined configs
 ##
 from omni.isaac.lab_assets.anymal import ANYMAL_C_CFG  # isort: skip
-from omni.isaac.lab_assets.unitree import UNITREE_A1_CFG  # isort: skip
+from omni.isaac.lab_assets.unitree import UNITREE_A1_CFG, UNITREE_GO2_CFG  # isort: skip
 
 
 @configclass
@@ -31,6 +36,8 @@ class TemplateEnvCfg(DirectRLEnvCfg):
     num_actions = 12
     num_observations = 24
     robot_type = "UNITREE_A1"
+    debug_vis = True
+    debug_marker = False
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -56,17 +63,36 @@ class TemplateEnvCfg(DirectRLEnvCfg):
             dynamic_friction=1.0,
             restitution=0.0,
         ),
-        debug_vis=False,
+        debug_vis=debug_marker,
     )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8, env_spacing=1.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=8, env_spacing=2.0, replicate_physics=True)
 
     # robot
     if robot_type == "UNITREE_A1":
         robot: ArticulationCfg = UNITREE_A1_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    else:
+        camera_offset = CameraCfg.OffsetCfg(pos=(0.27, 0.0, 0.03), rot=(0.5, -0.5, 0.5, -0.5), convention="ros")
+    elif robot_type == "UNITREE_GO2":
+        robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+        camera_offset = CameraCfg.OffsetCfg(pos=(0.32487, -0.00095, 0.05362), rot=(0.5, -0.5, 0.5, -0.5), convention="ros")
+    elif robot_type == "ANYMAL_C":
         robot: ArticulationCfg = ANYMAL_C_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+        camera_offset = CameraCfg.OffsetCfg(pos=(0.510, 0.0, 0.015), rot=(0.5, -0.5, 0.5, -0.5), convention="ros")
+    else:
+        raise ValueError(f"Invalid robot type: {robot_type}, available options: ['UNITREE_A1', 'UNITREE_GO2', 'ANYMAL_C']")
+
+    # camera
+    camera = CameraCfg(
+        prim_path="/World/envs/env_.*/Robot/Camera",
+        height=120,
+        width=160,
+        data_types=["rgb", "distance_to_image_plane"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 2.0)
+        ),
+        offset=camera_offset,
+    )
 
     # reward scales
     dummy_reward_scale = 1.0
@@ -81,9 +107,15 @@ class TemplateEnv(DirectRLEnv):
         # Joint position command (deviation from default joint positions)
         self._actions = torch.zeros(self.num_envs, self.cfg.num_actions, device=self.device)
 
+        self.set_debug_vis(self.cfg.debug_vis)
+
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
+        self._camera = Camera(self.cfg.camera)
+
         self.scene.articulations["robot"] = self._robot
+        self.scene.sensors["camera"] = self._camera
+
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
         self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
@@ -125,7 +157,7 @@ class TemplateEnv(DirectRLEnv):
 
         return died, time_out
 
-    def _reset_idx(self, env_ids: torch.Tensor | None):
+    def _reset_idx(self, env_ids: Sequence[int] | None):
         if env_ids is None or len(env_ids) == self.num_envs:
             env_ids = self._robot._ALL_INDICES
 
@@ -147,3 +179,31 @@ class TemplateEnv(DirectRLEnv):
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+
+    def _set_debug_vis_impl(self, debug_vis: bool):
+        pass
+
+    def _debug_vis_callback(self, event):
+        # RGB Images
+        # Permute the tensor from (num_envs, height, wdith, channel) to shape (num_envs, channel, height, width)
+        rgb_imgs = self._camera.data.output["rgb"].clone().permute(0, 3, 1, 2)
+
+        # Create a grid of images
+        grid_rgb_img = make_grid(rgb_imgs, nrow=round(rgb_imgs.shape[0] ** 0.5))
+        grid_rgb_img = grid_rgb_img.permute(1, 2, 0).cpu().numpy()
+        grid_rgb_img = cv2.cvtColor(grid_rgb_img, cv2.COLOR_RGB2BGR)
+
+        # Depth Images
+        # Add a channel dimension to the tensor from (num_envs, height, width) to (num_envs, 1, height, width)
+        depth_imgs = self._camera.data.output["distance_to_image_plane"].clone().unsqueeze(1)
+
+        # Create a grid of images
+        grid_depth_img = make_grid(depth_imgs, nrow=round(depth_imgs.shape[0] ** 0.5))
+        grid_depth_img = grid_depth_img.permute(1, 2, 0).cpu().numpy()
+
+        # Normalize the image to the range [0, 255]
+        grid_depth_img = (grid_depth_img * 255).astype(np.uint8)
+
+        cv2.imshow("Robot RGB Frame", grid_rgb_img)
+        cv2.imshow("Robot Depth Frame", grid_depth_img)
+        cv2.waitKey(1)
