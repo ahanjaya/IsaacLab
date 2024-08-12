@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import numpy as np
 import torch
+import torchvision
 from collections.abc import Sequence
 
 import cv2
 from omni.isaac.core.utils.viewports import set_camera_view
-from torchvision.utils import make_grid
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
@@ -31,12 +31,13 @@ from omni.isaac.lab_assets.unitree import UNITREE_A1_CFG  # isort: skip
 @configclass
 class QRCEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 5.0
+    episode_length_s = 40.0
     decimation = 4
-    action_scale = 0.5
+    action_scale = 0.25
     num_actions = 12
-    num_observations = 24
+    num_observations = 105  # Total
     num_proprio_observations = 46
+    num_task_objectives = 3
 
     robot_type = "UNITREE_A1"
     debug_vis = True
@@ -52,7 +53,6 @@ class QRCEnvCfg(DirectRLEnvCfg):
     clip_observations = 100.0
     clip_actions = 100.0
     encoder_history_length = 10
-
     foot_contact_threshold = 1.0
 
     # simulation
@@ -109,10 +109,17 @@ class QRCEnvCfg(DirectRLEnvCfg):
     )
 
     # camera
+    depth_cam = {
+        "original_size": (106, 60),  # (width, height)
+        # "original_size": (87, 58),  # (width, height)
+        "resize_to": (87, 58),
+        "far_clip": 2.0,
+    }
+
     camera = CameraCfg(
         prim_path="/World/envs/env_.*/Robot/Camera",
-        height=87,
-        width=58,
+        height=depth_cam["original_size"][1],
+        width=depth_cam["original_size"][0],
         data_types=["distance_to_image_plane"],
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=24.0,
@@ -138,6 +145,7 @@ class QRCEnv(DirectRLEnv):
             self.num_envs, self.cfg.num_actions, device=self.device
         )
 
+        self._joint_dof_idx, _ = self._robot.find_joints(".*")
         # [4, 8, 12, 16], ['FL_foot', 'FR_foot', 'RL_foot', 'RR_foot']
         self._foot_ids, _ = self._contact_sensor.find_bodies(".*foot")
         self._n_foot = len(self._foot_ids)
@@ -167,13 +175,15 @@ class QRCEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        self._actions = torch.zeros_like(actions)
-        self._processed_actions = (
-            self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos
+        clip_actions = self.cfg.clip_actions
+        isaaclab_actions = isaacgym_utils.reorder_joints_isaacgym_to_isaaclab(
+            actions
         )
+        clip_actions = torch.clip(isaaclab_actions, -clip_actions, clip_actions)
+        self._actions = clip_actions * self.cfg.action_scale + self._robot.data.default_joint_pos
 
     def _apply_action(self):
-        self._robot.set_joint_position_target(self._processed_actions)
+        self._robot.set_joint_position_target(self._actions)
 
     def _get_foot_contacts(self) -> torch.Tensor:
         net_contact_forces = self._contact_sensor.data.net_forces_w
@@ -196,12 +206,16 @@ class QRCEnv(DirectRLEnv):
         return foot_contacts
 
     def _get_proprioceptive_obs(self) -> torch.Tensor:
-        isaacgym_joint_pos_proprio = isaacgym_utils.reorder_joints_from_isaaclab_to_isaacgym(
-            (self._robot.data.joint_pos - self._robot.data.default_joint_pos)
-            * self.cfg.obs_scales["joint_pos"],
+        isaacgym_joint_pos_proprio = (
+            isaacgym_utils.reorder_joints_isaaclab_to_isaacgym(
+                (self._robot.data.joint_pos - self._robot.data.default_joint_pos)
+                * self.cfg.obs_scales["joint_pos"],
+            )
         )
-        isaacgym_joint_vel_proprio = isaacgym_utils.reorder_joints_from_isaaclab_to_isaacgym(
-            self._robot.data.joint_vel * self.cfg.obs_scales["joint_vel"]
+        isaacgym_joint_vel_proprio = (
+            isaacgym_utils.reorder_joints_isaaclab_to_isaacgym(
+                self._robot.data.joint_vel * self.cfg.obs_scales["joint_vel"]
+            )
         )
 
         obs = torch.cat(
@@ -218,6 +232,20 @@ class QRCEnv(DirectRLEnv):
 
         return torch.clip(obs, -self.cfg.clip_observations, self.cfg.clip_observations)
 
+    def _update_depth_map(self) -> None:
+        # TODO: Implement the depth map update function based on interval
+        # depth_frame = self._camera.data.output["distance_to_image_plane"].clone()
+        # depth_frame = torch.clip(depth_frame, 0.0, 1.0)
+
+        # load depth frames from file
+        # TODO: remove this line with real from isaaclab depth sensor
+        depth_frame = torch.tensor(
+            np.load("depth_frames.npy"), dtype=torch.float32, device=self.device
+        )
+
+        self._depth_map_buf = torch.roll(self._depth_map_buf, 1, dims=1)
+        self._depth_map_buf[:, 0, :, :] = depth_frame[:]
+
     def _get_observations(self) -> dict:
         # TODO: Implement the observation function
         proprio_obs = self._get_proprioceptive_obs()
@@ -226,14 +254,14 @@ class QRCEnv(DirectRLEnv):
         self._encoder_obs_hist_buf = torch.roll(self._encoder_obs_hist_buf, 1, dims=1)
         self._encoder_obs_hist_buf[:, 0, :] = proprio_obs
 
-        # priviliged_obs =
-        # estimated_obs =
-        # perception_obs =
+        self._update_depth_map()
 
-        # TODO: Delete this line
-        obs = torch.zeros((self.num_envs, self.num_observations), device=self.device)
-
-        observations = {"policy": obs}
+        observations = {
+            "proprio_obs": proprio_obs,
+            "task_obs": task_obs,
+            "encoder_obs_hist": self._encoder_obs_hist_buf,
+            "depth_map_obs": self._depth_map_buf,
+        }
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
@@ -269,6 +297,7 @@ class QRCEnv(DirectRLEnv):
 
         self._actions[env_ids] = 0.0
         self._encoder_obs_hist_buf[env_ids, :, :] = 0.0
+        # self._depth_map_buf[env_ids, :, :, :] = 0.0
 
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
@@ -286,20 +315,11 @@ class QRCEnv(DirectRLEnv):
 
     def _show_depth_frame(self):
         # Depth Images
-        # Add a channel dimension to the tensor from (num_envs, height, width) to (num_envs, 1, height, width)
-        depth_imgs = (
-            self._camera.data.output["distance_to_image_plane"].clone().unsqueeze(1)
-        )
-
-        # Create a grid of images
-        grid_depth_img = make_grid(depth_imgs, nrow=round(depth_imgs.shape[0] ** 0.5))
-        grid_depth_img = grid_depth_img.permute(1, 2, 0).cpu().numpy()
-
-        # Normalize the image to the range [0, 255]
-        grid_depth_img = (grid_depth_img * 255).astype(np.uint8)
-
-        # TODO: Debug why this is not working
-        cv2.imshow("Robot Depth Frame", grid_depth_img)
+        depth_frame = self._camera.data.output["distance_to_image_plane"][0].clone()
+        depth_frame = depth_frame.cpu().numpy()
+        depth_frame = (depth_frame * 255).astype(np.uint8)
+        depth_frame = cv2.resize(depth_frame, None, fx=5, fy=5, interpolation=cv2.INTER_NEAREST)
+        cv2.imshow("Robot Depth Frame", depth_frame)
         cv2.waitKey(1)
 
     def _debug_vis_callback(self, event):
@@ -324,7 +344,9 @@ class QRCEnv(DirectRLEnv):
         )
 
         # X/Y linear velocity and yaw angular velocity commands
-        self._commands = torch.zeros(self.num_envs, 3, device=self.device)
+        self._commands = torch.zeros(
+            self.num_envs, self.cfg.num_task_objectives, device=self.device
+        )
         # TODO: Remove this override commands
         self._commands[:, 1:] = 1.0
 
@@ -336,6 +358,22 @@ class QRCEnv(DirectRLEnv):
             ),
             dtype=torch.float32,
             device=self.device,
+            requires_grad=False,
+        )
+        self._depth_map_buf = torch.zeros(
+            (
+                self.num_envs,
+                1,
+                self.cfg.depth_cam["resize_to"][1],
+                self.cfg.depth_cam["resize_to"][0],
+            ),
+            dtype=torch.float32,
+            device=self.device,
+            requires_grad=False,
+        )
+        self._depth_resize_transform = torchvision.transforms.Resize(
+            (self.cfg.depth_cam["resize_to"][1], self.cfg.depth_cam["resize_to"][0]),
+            interpolation=torchvision.transforms.InterpolationMode.BICUBIC,
         )
 
     def _update_camera_follow_env(self):

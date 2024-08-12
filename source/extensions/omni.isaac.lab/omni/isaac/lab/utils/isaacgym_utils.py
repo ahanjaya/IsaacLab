@@ -1,4 +1,4 @@
-def reorder_joints_from_isaaclab_to_isaacgym(isaaclab_joints):
+def reorder_joints_isaaclab_to_isaacgym(isaaclab_joints):
     # IsaacLab
     # FL hip,   FR hip,   RL hip,   RR hip
     # FL thigh, FR thigh, RL thigh, RR thigh
@@ -18,7 +18,7 @@ def reorder_joints_from_isaaclab_to_isaacgym(isaaclab_joints):
     return isaacgym_joint
 
 
-def reorder_joints_from_isaacgym_to_isaaclab(isaacgym_joints):
+def reorder_joints_isaacgym_to_isaaclab(isaacgym_joints):
     # IsaacGym
     # FL hip, FL thigh, FL calf
     # FR hip, FR thigh, FR calf
