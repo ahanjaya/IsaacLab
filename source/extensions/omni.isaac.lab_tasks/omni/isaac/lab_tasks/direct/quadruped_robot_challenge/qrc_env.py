@@ -7,14 +7,15 @@ from __future__ import annotations
 
 import numpy as np
 import torch
-import torchvision
 from collections.abc import Sequence
 
 import cv2
+import torchvision
 from omni.isaac.core.utils.viewports import set_camera_view
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
+from omni.isaac.lab.devices import Se2Keyboard
 from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sensors import Camera, CameraCfg, ContactSensor, ContactSensorCfg
@@ -96,6 +97,7 @@ class QRCEnvCfg(DirectRLEnvCfg):
         camera_offset = CameraCfg.OffsetCfg(
             pos=(0.27, 0.0, 0.03), rot=(0.5, -0.5, 0.5, -0.5), convention="ros"
         )
+        camera_prim_path = "/World/envs/env_.*/Robot/trunk/front_cam"
     else:
         raise ValueError(
             f"Invalid robot type: {robot_type}, available options: ['UNITREE_A1', 'UNITREE_GO2']"
@@ -117,7 +119,7 @@ class QRCEnvCfg(DirectRLEnvCfg):
     }
 
     camera = CameraCfg(
-        prim_path="/World/envs/env_.*/Robot/trunk/front_cam",
+        prim_path=camera_prim_path,
         height=depth_cam["original_size"][1],
         width=depth_cam["original_size"][0],
         data_types=["distance_to_image_plane"],
@@ -157,6 +159,8 @@ class QRCEnv(DirectRLEnv):
         self._robot = Articulation(self.cfg.robot)
         self._camera = Camera(self.cfg.camera)
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
+        self._teleop_key = Se2Keyboard()
+        self._setup_extra_keyboard_callback()
 
         self.scene.articulations["robot"] = self._robot
         self.scene.sensors["camera"] = self._camera
@@ -293,13 +297,8 @@ class QRCEnv(DirectRLEnv):
         self._robot.reset(env_ids)
         self._camera.reset(env_ids)
         self._contact_sensor.reset(env_ids)
+        self._teleop_key.reset()
         super()._reset_idx(env_ids)
-
-        if len(env_ids) == self.num_envs:
-            # Spread out the resets to avoid spikes in training when many environments reset at a similar time
-            self.episode_length_buf[:] = torch.randint_like(
-                self.episode_length_buf, high=int(self.max_episode_length)
-            )
 
         # Reset buff
         self._actions[env_ids] = 0.0
@@ -412,3 +411,11 @@ class QRCEnv(DirectRLEnv):
         )
 
         set_camera_view(self.follow_cam_pos, self.follow_cam_target)
+
+    def _setup_extra_keyboard_callback(self):
+        self._teleop_key.add_callback("R", self._keyboard_reset_idx)
+
+    def _keyboard_reset_idx(self):
+        print("[R] Key pressed: Resetting environments...")
+        env_ids = torch.arange(0, self.num_envs, dtype=torch.int64, device=self.device)
+        self.episode_length_buf[env_ids] = torch.ones_like(self.episode_length_buf) * int(self.max_episode_length)

@@ -63,6 +63,7 @@ from omni.isaac.lab_tasks.utils.wrappers.torch_jit import JitVecEnvWrapper
 
 np.set_printoptions(precision=2, suppress=True)
 
+
 def main():
     """Play with RSL-RL agent."""
     # parse configuration
