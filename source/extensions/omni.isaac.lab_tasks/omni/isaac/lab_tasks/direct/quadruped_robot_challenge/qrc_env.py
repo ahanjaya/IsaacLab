@@ -41,7 +41,8 @@ class QRCEnvCfg(DirectRLEnvCfg):
 
     robot_type = "UNITREE_A1"
     debug_vis = True
-    show_depth = False
+    show_depth = True
+    follow_env = True
     debug_marker = False
 
     obs_scales = {
@@ -111,18 +112,17 @@ class QRCEnvCfg(DirectRLEnvCfg):
     # camera
     depth_cam = {
         "original_size": (106, 60),  # (width, height)
-        # "original_size": (87, 58),  # (width, height)
         "resize_to": (87, 58),
         "far_clip": 2.0,
     }
 
     camera = CameraCfg(
-        prim_path="/World/envs/env_.*/Robot/Camera",
+        prim_path="/World/envs/env_.*/Robot/trunk/front_cam",
         height=depth_cam["original_size"][1],
         width=depth_cam["original_size"][0],
         data_types=["distance_to_image_plane"],
         spawn=sim_utils.PinholeCameraCfg(
-            focal_length=24.0,
+            focal_length=8.0,
             focus_distance=400.0,
             horizontal_aperture=20.955,
             clipping_range=(0.1, 2.0),
@@ -176,11 +176,11 @@ class QRCEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor):
         clip_actions = self.cfg.clip_actions
-        isaaclab_actions = isaacgym_utils.reorder_joints_isaacgym_to_isaaclab(
-            actions
-        )
+        isaaclab_actions = isaacgym_utils.reorder_joints_isaacgym_to_isaaclab(actions)
         clip_actions = torch.clip(isaaclab_actions, -clip_actions, clip_actions)
-        self._actions = clip_actions * self.cfg.action_scale + self._robot.data.default_joint_pos
+        self._actions = (
+            clip_actions * self.cfg.action_scale + self._robot.data.default_joint_pos
+        )
 
     def _apply_action(self):
         self._robot.set_joint_position_target(self._actions)
@@ -206,16 +206,12 @@ class QRCEnv(DirectRLEnv):
         return foot_contacts
 
     def _get_proprioceptive_obs(self) -> torch.Tensor:
-        isaacgym_joint_pos_proprio = (
-            isaacgym_utils.reorder_joints_isaaclab_to_isaacgym(
-                (self._robot.data.joint_pos - self._robot.data.default_joint_pos)
-                * self.cfg.obs_scales["joint_pos"],
-            )
+        isaacgym_joint_pos_proprio = isaacgym_utils.reorder_joints_isaaclab_to_isaacgym(
+            (self._robot.data.joint_pos - self._robot.data.default_joint_pos)
+            * self.cfg.obs_scales["joint_pos"],
         )
-        isaacgym_joint_vel_proprio = (
-            isaacgym_utils.reorder_joints_isaaclab_to_isaacgym(
-                self._robot.data.joint_vel * self.cfg.obs_scales["joint_vel"]
-            )
+        isaacgym_joint_vel_proprio = isaacgym_utils.reorder_joints_isaaclab_to_isaacgym(
+            self._robot.data.joint_vel * self.cfg.obs_scales["joint_vel"]
         )
 
         obs = torch.cat(
@@ -234,17 +230,27 @@ class QRCEnv(DirectRLEnv):
 
     def _update_depth_map(self) -> None:
         # TODO: Implement the depth map update function based on interval
-        # depth_frame = self._camera.data.output["distance_to_image_plane"].clone()
-        # depth_frame = torch.clip(depth_frame, 0.0, 1.0)
-
-        # load depth frames from file
-        # TODO: remove this line with real from isaaclab depth sensor
-        depth_frame = torch.tensor(
-            np.load("depth_frames.npy"), dtype=torch.float32, device=self.device
+        depth_frames = self._camera.data.output["distance_to_image_plane"]
+        curr_depth_frames = torch.zeros(
+            self.num_envs,
+            self.cfg.depth_cam["resize_to"][1],
+            self.cfg.depth_cam["resize_to"][0],
+            device=self.device,
+            requires_grad=False,
         )
 
+        # post-process and normalize depth maps
+        for i in range(self.num_envs):
+            depth_frame = depth_frames[i]
+            depth_frame[depth_frame == torch.inf] = 0.0
+            depth_frame = depth_frame / self.cfg.depth_cam["far_clip"]
+            depth_frame[depth_frame > 0] = 1 - depth_frame[depth_frame > 0]
+            curr_depth_frames[i, :, :] = self._depth_resize_transform(
+                depth_frame.unsqueeze(0)
+            )
+
         self._depth_map_buf = torch.roll(self._depth_map_buf, 1, dims=1)
-        self._depth_map_buf[:, 0, :, :] = depth_frame[:]
+        self._depth_map_buf[:, 0, :, :] = curr_depth_frames[:]
 
     def _get_observations(self) -> dict:
         # TODO: Implement the observation function
@@ -295,9 +301,10 @@ class QRCEnv(DirectRLEnv):
                 self.episode_length_buf, high=int(self.max_episode_length)
             )
 
+        # Reset buff
         self._actions[env_ids] = 0.0
         self._encoder_obs_hist_buf[env_ids, :, :] = 0.0
-        # self._depth_map_buf[env_ids, :, :, :] = 0.0
+        self._depth_map_buf[env_ids, :, :, :] = 0.0
 
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
@@ -314,20 +321,30 @@ class QRCEnv(DirectRLEnv):
             cv2.namedWindow("Robot Depth Frame", cv2.WINDOW_NORMAL)
 
     def _show_depth_frame(self):
-        # Depth Images
-        depth_frame = self._camera.data.output["distance_to_image_plane"][0].clone()
-        depth_frame = depth_frame.cpu().numpy()
-        depth_frame = (depth_frame * 255).astype(np.uint8)
-        depth_frame = cv2.resize(depth_frame, None, fx=5, fy=5, interpolation=cv2.INTER_NEAREST)
+        if not self.cfg.show_depth:
+            return
+
+        depth_frame = (
+            self._depth_map_buf[self.i_follow_env, 0, :, :].detach().cpu().numpy()
+        )
+        depth_frame = cv2.resize(
+            depth_frame, None, fx=5, fy=5, interpolation=cv2.INTER_NEAREST
+        )
+
         cv2.imshow("Robot Depth Frame", depth_frame)
         cv2.waitKey(1)
 
     def _debug_vis_callback(self, event):
-        # Camera follow actor
+        # check if robot is initialized
+        # note: this is needed in-case the robot is de-initialized. we can't access the data
+        if not self._robot.is_initialized:
+            return
+
+        # Camera view follow actor
         self._update_camera_follow_env()
 
-        if self.cfg.show_depth:
-            self._show_depth_frame()
+        # Robot front depth cam
+        self._show_depth_frame()
 
     ##############################################################################
     def _setup_utility_tensors(self):
@@ -377,6 +394,9 @@ class QRCEnv(DirectRLEnv):
         )
 
     def _update_camera_follow_env(self):
+        if not self.cfg.follow_env:
+            return
+
         actor_pos = self._robot.data.root_pos_w[self.i_follow_env].cpu().numpy()
 
         # Smooth the camera movement with a moving average.

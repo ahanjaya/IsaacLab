@@ -104,13 +104,13 @@ def main():
             # agent stepping
             actions = modules_runner.policy(process_obs.detach())
 
-            # TODO: replace the following line with the above line
-            # actions = torch.zeros(
-            #     (env.num_envs, env.num_actions), dtype=torch.float32, device=env.device
-            # )
-
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs, _, dones, _ = env.step(actions)
+
+            # reset modules
+            done_env_ids = dones.nonzero(as_tuple=False).flatten()
+            if done_env_ids.shape[0] > 0:
+                modules_runner.depth_encoder.reset_memory()
 
     # close the simulator
     env.close()
