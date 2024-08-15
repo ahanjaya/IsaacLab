@@ -124,7 +124,7 @@ class QRCEnvCfg(DirectRLEnvCfg):
         width=depth_cam["original_size"][0],
         data_types=["distance_to_image_plane"],
         spawn=sim_utils.PinholeCameraCfg(
-            focal_length=8.0,
+            focal_length=11.0,
             focus_distance=400.0,
             horizontal_aperture=20.955,
             clipping_range=(0.1, 2.0),
@@ -180,14 +180,17 @@ class QRCEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor):
         clip_actions = self.cfg.clip_actions
-        isaaclab_actions = isaacgym_utils.reorder_joints_isaacgym_to_isaaclab(actions)
-        clip_actions = torch.clip(isaaclab_actions, -clip_actions, clip_actions)
-        self._actions = (
-            clip_actions * self.cfg.action_scale + self._robot.data.default_joint_pos
+        self._actions = torch.clip(actions, -clip_actions, clip_actions)
+        isaaclab_actions = isaacgym_utils.reorder_joints_isaacgym_to_isaaclab(
+            self._actions
+        )
+        self._processed_actions = (
+            isaaclab_actions * self.cfg.action_scale
+            + self._robot.data.default_joint_pos
         )
 
     def _apply_action(self):
-        self._robot.set_joint_position_target(self._actions)
+        self._robot.set_joint_position_target(self._processed_actions)
 
     def _get_foot_contacts(self) -> torch.Tensor:
         net_contact_forces = self._contact_sensor.data.net_forces_w
@@ -249,6 +252,7 @@ class QRCEnv(DirectRLEnv):
             depth_frame[depth_frame == torch.inf] = 0.0
             depth_frame = depth_frame / self.cfg.depth_cam["far_clip"]
             depth_frame[depth_frame > 0] = 1 - depth_frame[depth_frame > 0]
+
             curr_depth_frames[i, :, :] = self._depth_resize_transform(
                 depth_frame.unsqueeze(0)
             )
@@ -396,11 +400,11 @@ class QRCEnv(DirectRLEnv):
         if not self.cfg.follow_env:
             return
 
-        actor_pos = self._robot.data.root_pos_w[self.i_follow_env].cpu().numpy()
+        robot_pos = self._robot.data.root_pos_w[self.i_follow_env].cpu().numpy()
 
         # Smooth the camera movement with a moving average.
-        new_cam_pos = actor_pos + self.follow_cam_offset
-        new_cam_target = actor_pos
+        new_cam_pos = robot_pos + self.follow_cam_offset
+        new_cam_target = robot_pos
 
         self.follow_cam_pos = (
             self.k_smooth * self.follow_cam_pos + (1 - self.k_smooth) * new_cam_pos
@@ -418,4 +422,6 @@ class QRCEnv(DirectRLEnv):
     def _keyboard_reset_idx(self):
         print("[R] Key pressed: Resetting environments...")
         env_ids = torch.arange(0, self.num_envs, dtype=torch.int64, device=self.device)
-        self.episode_length_buf[env_ids] = torch.ones_like(self.episode_length_buf) * int(self.max_episode_length)
+        self.episode_length_buf[env_ids] = torch.ones_like(
+            self.episode_length_buf
+        ) * int(self.max_episode_length)
