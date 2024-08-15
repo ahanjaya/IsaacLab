@@ -14,7 +14,12 @@ import torchvision
 from omni.isaac.core.utils.viewports import set_camera_view
 
 import omni.isaac.lab.sim as sim_utils
-from omni.isaac.lab.assets import Articulation, ArticulationCfg
+from omni.isaac.lab.assets import (
+    Articulation,
+    ArticulationCfg,
+    RigidObject,
+    RigidObjectCfg,
+)
 from omni.isaac.lab.devices import Se2Keyboard
 from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
 from omni.isaac.lab.scene import InteractiveSceneCfg
@@ -45,6 +50,7 @@ class QRCEnvCfg(DirectRLEnvCfg):
     show_depth = True
     follow_env = True
     debug_marker = False
+    spawn_cube = False
 
     obs_scales = {
         "lin_vel": 2.0,
@@ -132,6 +138,24 @@ class QRCEnvCfg(DirectRLEnvCfg):
         offset=camera_offset,
     )
 
+    # add cube
+    if spawn_cube:
+        cube_height = 0.3
+        cube: RigidObjectCfg = RigidObjectCfg(
+            prim_path="/World/envs/env_.*/cube",
+            spawn=sim_utils.CuboidCfg(
+                size=(1.0, 10.0, cube_height),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=False),
+                mass_props=sim_utils.MassPropertiesCfg(mass=100.0),
+                physics_material=sim_utils.RigidBodyMaterialCfg(
+                    static_friction=1.0, dynamic_friction=1.0, restitution=0.0
+                ),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.0)),
+                collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+            ),
+            init_state=RigidObjectCfg.InitialStateCfg(pos=(2.5, 0.0, cube_height)),
+        )
+
     # reward scales
     dummy_reward_scale = 1.0
 
@@ -159,12 +183,19 @@ class QRCEnv(DirectRLEnv):
         self._robot = Articulation(self.cfg.robot)
         self._camera = Camera(self.cfg.camera)
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
+
+        if self.cfg.spawn_cube:
+            self._cube = RigidObject(self.cfg.cube)
+
         self._teleop_key = Se2Keyboard()
         self._setup_extra_keyboard_callback()
 
         self.scene.articulations["robot"] = self._robot
         self.scene.sensors["camera"] = self._camera
         self.scene.sensors["contact_sensor"] = self._contact_sensor
+
+        if self.cfg.spawn_cube:
+            self.scene.rigid_objects["cube"] = self._cube
 
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
@@ -301,6 +332,10 @@ class QRCEnv(DirectRLEnv):
         self._robot.reset(env_ids)
         self._camera.reset(env_ids)
         self._contact_sensor.reset(env_ids)
+
+        if self.cfg.spawn_cube:
+            self._cube.reset(env_ids)
+
         self._teleop_key.reset()
         super()._reset_idx(env_ids)
 
