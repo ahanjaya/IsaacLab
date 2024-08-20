@@ -102,6 +102,16 @@ CUBOID_MARKER_CFG = VisualizationMarkersCfg(
 )
 """Configuration for the cuboid marker."""
 
+SPHERE_MARKER_CFG = VisualizationMarkersCfg(
+    markers={
+        "sphere": sim_utils.SphereCfg(
+            radius=0.01,
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        ),
+    }
+)
+"""Configuration for the cuboid marker."""
+
 POSITION_GOAL_MARKER_CFG = VisualizationMarkersCfg(
     markers={
         "target_far": sim_utils.SphereCfg(

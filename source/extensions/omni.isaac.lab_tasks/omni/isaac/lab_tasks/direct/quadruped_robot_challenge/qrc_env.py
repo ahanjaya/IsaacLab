@@ -9,19 +9,23 @@ import numpy as np
 import torch
 from collections.abc import Sequence
 
+import os
 import cv2
 import torchvision
 from omni.isaac.core.utils.viewports import set_camera_view
 
 import omni.isaac.lab.sim as sim_utils
+import omni.isaac.lab.utils.math as math_utils
 from omni.isaac.lab.assets import (
     Articulation,
     ArticulationCfg,
     RigidObject,
     RigidObjectCfg,
 )
+
 from omni.isaac.lab.devices import Se2Keyboard
 from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
+from omni.isaac.lab.markers import VisualizationMarkers
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sensors import Camera, CameraCfg, ContactSensor, ContactSensorCfg
 from omni.isaac.lab.sim import SimulationCfg
@@ -32,26 +36,35 @@ from omni.isaac.lab.utils import configclass, isaacgym_utils
 # Pre-defined configs
 ##
 from omni.isaac.lab_assets.unitree import UNITREE_A1_CFG  # isort: skip
+from omni.isaac.lab.markers.config import SPHERE_MARKER_CFG
 
 
 @configclass
 class QRCEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 40.0
+    episode_length_s = 100.0
     decimation = 4
     action_scale = 0.25
     num_actions = 12
+
     num_observations = 105  # Total
     num_proprio_observations = 46
     num_task_objectives = 3
 
+    # visualization
     robot_type = "UNITREE_A1"
-    debug_vis = True
-    show_depth = True
-    follow_env = True
-    debug_marker = False
-    spawn_cube = False
+    show_depth = False
+    show_waypoint = True
 
+    follow_env = False
+    debug_marker = False
+
+    spawn = {
+        "cube": False,
+        "qrc_map": False,
+    }
+
+    # observation
     obs_scales = {
         "lin_vel": 2.0,
         "ang_vel": 0.25,
@@ -61,7 +74,39 @@ class QRCEnvCfg(DirectRLEnvCfg):
     clip_observations = 100.0
     clip_actions = 100.0
     encoder_history_length = 10
+
     foot_contact_threshold = 1.0
+    reset_contact_threshold = 1.0
+    reach_goal_dist_threshold = 0.2
+
+    start_pos = (6.2, 5.0, -np.pi)  # x, y, yaw
+
+    waypoints = (
+        [6.2, 3.0],
+        [4.0, 3.0],
+        [3.0, 4.2],
+        [0.25, 4.2],
+        [0.25, 3.0],
+        [-2.5, 3.0],
+        [-3.3, 4.2],
+        [-5.75, 4.2],
+        [-5.75, 3.0],
+        [-6.1, 1.8],
+        [-6.1, 0.6],
+        # Half
+        [-6.1, -0.6],
+        [-6.1, -1.8],
+        [-5.75, -3.0],
+        [-5.75, -4.2],
+        [-3.3, -4.2],
+        [-2.5, -3.0],
+        [0.25, -3.0],
+        [0.25, -4.2],
+        [3.0, -4.2],
+        [4.0, -3.0],
+        [6.2, -3.0],
+        [6.2, -4.5],
+    )
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -92,7 +137,7 @@ class QRCEnvCfg(DirectRLEnvCfg):
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=10, env_spacing=2.0, replicate_physics=True
+        num_envs=1, env_spacing=2.0, replicate_physics=True
     )
 
     # robot
@@ -139,22 +184,28 @@ class QRCEnvCfg(DirectRLEnvCfg):
     )
 
     # add cube
-    if spawn_cube:
-        cube_height = 0.3
-        cube: RigidObjectCfg = RigidObjectCfg(
-            prim_path="/World/envs/env_.*/cube",
-            spawn=sim_utils.CuboidCfg(
-                size=(1.0, 10.0, cube_height),
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=False),
-                mass_props=sim_utils.MassPropertiesCfg(mass=100.0),
-                physics_material=sim_utils.RigidBodyMaterialCfg(
-                    static_friction=1.0, dynamic_friction=1.0, restitution=0.0
-                ),
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.0)),
-                collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+    cube_height = 0.3
+    cube: RigidObjectCfg = RigidObjectCfg(
+        prim_path="/World/envs/env_.*/cube",
+        spawn=sim_utils.CuboidCfg(
+            size=(1.0, 10.0, cube_height),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=False),
+            mass_props=sim_utils.MassPropertiesCfg(mass=100.0),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=1.0, dynamic_friction=1.0, restitution=0.0
             ),
-            init_state=RigidObjectCfg.InitialStateCfg(pos=(2.5, 0.0, cube_height)),
-        )
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.0)),
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(2.5, 0.0, cube_height)),
+    )
+
+    # qrc map
+    map_usd = os.path.join(
+        os.getcwd(),
+        "source/extensions/omni.isaac.lab_assets/data/QRC",
+        "map_flat.usd",
+    )
 
     # reward scales
     dummy_reward_scale = 1.0
@@ -171,30 +222,36 @@ class QRCEnv(DirectRLEnv):
             self.num_envs, self.cfg.num_actions, device=self.device
         )
 
-        self._joint_dof_idx, _ = self._robot.find_joints(".*")
-        # [4, 8, 12, 16], ['FL_foot', 'FR_foot', 'RL_foot', 'RR_foot']
+        # Get specific body indices
+        self._body_idx, _ = self._contact_sensor.find_bodies("trunk")
         self._foot_ids, _ = self._contact_sensor.find_bodies(".*foot")
+        self._hip_ids, _ = self._contact_sensor.find_bodies(".*hip")
+        self._thigh_ids, _ = self._contact_sensor.find_bodies(".*thigh")
+        self._calf_ids, _ = self._contact_sensor.find_bodies(".*calf")
         self._n_foot = len(self._foot_ids)
 
         self._setup_utility_tensors()
-        self.set_debug_vis(self.cfg.debug_vis)
+
+        # debug vis
+        self.set_debug_vis(self.sim.has_gui())
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
         self._camera = Camera(self.cfg.camera)
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
 
-        if self.cfg.spawn_cube:
+        if self.cfg.spawn["cube"]:
             self._cube = RigidObject(self.cfg.cube)
 
-        self._teleop_key = Se2Keyboard()
-        self._setup_extra_keyboard_callback()
+        if self.sim.has_gui():
+            self._teleop_key = Se2Keyboard()
+            self._setup_extra_keyboard_callback()
 
         self.scene.articulations["robot"] = self._robot
         self.scene.sensors["camera"] = self._camera
         self.scene.sensors["contact_sensor"] = self._contact_sensor
 
-        if self.cfg.spawn_cube:
+        if self.cfg.spawn["cube"]:
             self.scene.rigid_objects["cube"] = self._cube
 
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
@@ -266,6 +323,37 @@ class QRCEnv(DirectRLEnv):
 
         return torch.clip(obs, -self.cfg.clip_observations, self.cfg.clip_observations)
 
+    def _compute_task_objective(self) -> torch.Tensor:
+        env_ids = self._robot._ALL_INDICES
+        current_goal = self._waypoints_pos[env_ids, self._idx_waypoint]
+
+        target_pos_rel = current_goal[:, :2] - self._robot.data.root_pos_w[:, :2]
+        norm_dist_to_target = torch.norm(target_pos_rel, dim=-1, keepdim=True)
+
+        target_vec_norm = target_pos_rel / (norm_dist_to_target + 1e-5)
+        target_yaw = torch.atan2(target_vec_norm[:, 1], target_vec_norm[:, 0])
+        theta_diff_to_target = math_utils.wrap_to_pi(
+            target_yaw - self._robot.data.heading_w
+        )
+
+        self._commands[:, 0] = torch.sin(theta_diff_to_target)
+        self._commands[:, 1] = torch.cos(theta_diff_to_target)
+        self._commands[:, 2] = torch.clip(norm_dist_to_target, 0.0, 1.0)
+
+        # TODO: Override commands
+        # self._commands[:, 1:] = 1.0
+
+        reached_goal = (
+            norm_dist_to_target.squeeze(-1) <= self.cfg.reach_goal_dist_threshold
+        )
+        reached_goal_ids = reached_goal.nonzero(as_tuple=False)
+
+        if len(reached_goal_ids) > 0:
+            self._idx_waypoint[reached_goal_ids] += 1
+            self._idx_waypoint[reached_goal_ids] %= self._total_waypoint
+
+        return self._commands
+
     def _update_depth_map(self) -> None:
         # TODO: Implement the depth map update function based on interval
         depth_frames = self._camera.data.output["distance_to_image_plane"]
@@ -292,9 +380,8 @@ class QRCEnv(DirectRLEnv):
         self._depth_map_buf[:, 0, :, :] = curr_depth_frames[:]
 
     def _get_observations(self) -> dict:
-        # TODO: Implement the observation function
         proprio_obs = self._get_proprioceptive_obs()
-        task_obs = self._commands[:]
+        task_obs = self._compute_task_objective()
 
         self._encoder_obs_hist_buf = torch.roll(self._encoder_obs_hist_buf, 1, dims=1)
         self._encoder_obs_hist_buf[:, 0, :] = proprio_obs
@@ -321,9 +408,15 @@ class QRCEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        died = torch.zeros_like(time_out).bool()
+        is_finished = self._idx_waypoint >= self._total_waypoint
 
-        return died, time_out
+        died = torch.zeros_like(time_out)
+        is_contacts = self._check_contacts()
+
+        terminated = died | is_contacts
+        done = time_out | is_finished
+
+        return terminated, done
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         if env_ids is None or len(env_ids) == self.num_envs:
@@ -333,44 +426,49 @@ class QRCEnv(DirectRLEnv):
         self._camera.reset(env_ids)
         self._contact_sensor.reset(env_ids)
 
-        if self.cfg.spawn_cube:
+        if self.cfg.spawn["cube"]:
             self._cube.reset(env_ids)
 
-        self._teleop_key.reset()
+        if self.sim.has_gui():
+            self._teleop_key.reset()
         super()._reset_idx(env_ids)
 
         # Reset buff
         self._actions[env_ids] = 0.0
         self._encoder_obs_hist_buf[env_ids, :, :] = 0.0
         self._depth_map_buf[env_ids, :, :, :] = 0.0
+        self._idx_waypoint[env_ids] = 0
 
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
         default_root_state = self._robot.data.default_root_state[env_ids]
-        default_root_state[:, :3] += self._terrain.env_origins[env_ids]
+        default_root_state[:, :7] += self.qrc_start_pose
 
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
     def _set_debug_vis_impl(self, debug_vis: bool):
-        if self.cfg.show_depth:
-            cv2.namedWindow("Robot Depth Frame", cv2.WINDOW_NORMAL)
-
-    def _show_depth_frame(self):
-        if not self.cfg.show_depth:
+        if not debug_vis:
             return
 
-        depth_frame = (
-            self._depth_map_buf[self.i_follow_env, 0, :, :].detach().cpu().numpy()
-        )
-        depth_frame = cv2.resize(
-            depth_frame, None, fx=5, fy=5, interpolation=cv2.INTER_NEAREST
-        )
+        if self.cfg.show_depth_frame:
+            cv2.namedWindow("Robot Depth Frame", cv2.WINDOW_NORMAL)
 
-        cv2.imshow("Robot Depth Frame", depth_frame)
-        cv2.waitKey(1)
+        if self.cfg.show_waypoint:
+            self._show_all_waypoint()
+
+            # current waypoint
+            marker_cfg = SPHERE_MARKER_CFG.replace(
+                prim_path="/Visuals/Waypoints",
+            )
+            marker_cfg.markers["sphere"].radius = 0.15
+            marker_cfg.markers["sphere"].visual_material = sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(0.0, 1.0, 0.0),
+                metallic=0.5,
+            )
+            self.current_waypoint_visualizer = VisualizationMarkers(marker_cfg)
 
     def _debug_vis_callback(self, event):
         # check if robot is initialized
@@ -384,7 +482,41 @@ class QRCEnv(DirectRLEnv):
         # Robot front depth cam
         self._show_depth_frame()
 
+        # Robot current waypoint target
+        self._show_current_waypoint()
+
     ##############################################################################
+    def _init_start_pose(self):
+        start_pos = torch.zeros(
+            self.num_envs,
+            3,
+            dtype=torch.float32,
+            device=self.device,
+            requires_grad=False,
+        )
+        start_pos[:, 0] = self.cfg.start_pos[0]  # x
+        start_pos[:, 1] = self.cfg.start_pos[1]  # y
+
+        ori_euler_xyz = torch.zeros(
+            self.num_envs,
+            3,
+            dtype=torch.float32,
+            device=self.device,
+            requires_grad=False,
+        )
+        ori_euler_xyz[:, -1] = self.cfg.start_pos[2]
+        ori_quat = math_utils.quat_from_euler_xyz(
+            ori_euler_xyz[:, 0], ori_euler_xyz[:, 1], ori_euler_xyz[:, 2]
+        )
+
+        return torch.cat(
+            [
+                start_pos,
+                ori_quat,
+            ],
+            dim=-1,
+        )
+
     def _setup_utility_tensors(self):
         # Camera follow actor
         self.follow_cam_pos = np.array([0.7, 1.5, 0.7])
@@ -392,6 +524,8 @@ class QRCEnv(DirectRLEnv):
         self.follow_cam_offset = np.array([0.0, -3.0, 2.0])
         self.k_smooth = 0.9
         self.i_follow_env = 0
+
+        self.qrc_start_pose = self._init_start_pose()
 
         # Joint position command (deviation from default joint positions)
         self._actions = torch.zeros(
@@ -431,6 +565,47 @@ class QRCEnv(DirectRLEnv):
             interpolation=torchvision.transforms.InterpolationMode.BICUBIC,
         )
 
+        self._total_waypoint = len(self.cfg.waypoints)
+
+        self._waypoints_pos = torch.tensor(
+            (0.0, 0.0, self._robot.data.default_root_state[:, 2]), device=self.device
+        ).repeat(self.num_envs, self._total_waypoint, 1)
+        for idx, val in enumerate(self.cfg.waypoints):
+            self._waypoints_pos[:, idx, :2] = torch.tensor(val, dtype=torch.float32)
+
+        self._waypoints_pos[:] += self._terrain.env_origins[:]
+
+        self._idx_waypoint = torch.zeros_like(self.episode_length_buf)
+
+    def _check_contacts(self) -> torch.Tensor:
+        # check reset contact for all bodies except foot
+        net_contact_forces = self._contact_sensor.data.net_forces_w
+        if net_contact_forces is None:
+            return torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+
+        body_contact = (
+            torch.norm(net_contact_forces[:, self._body_idx, :], dim=1)
+            >= self.cfg.reset_contact_threshold
+        )
+        hip_contact = (
+            torch.norm(net_contact_forces[:, self._hip_ids, :], dim=1)
+            >= self.cfg.reset_contact_threshold
+        )
+        thigh_contact = (
+            torch.norm(net_contact_forces[:, self._thigh_ids, :], dim=1)
+            >= self.cfg.reset_contact_threshold
+        )
+        calf_contact = (
+            torch.norm(net_contact_forces[:, self._calf_ids, :], dim=1)
+            >= self.cfg.reset_contact_threshold
+        )
+
+        all_contacts = torch.cat(
+            [body_contact, hip_contact, thigh_contact, calf_contact], dim=-1
+        )
+
+        return torch.any(all_contacts, dim=1)
+
     def _update_camera_follow_env(self):
         if not self.cfg.follow_env:
             return
@@ -460,3 +635,36 @@ class QRCEnv(DirectRLEnv):
         self.episode_length_buf[env_ids] = torch.ones_like(
             self.episode_length_buf
         ) * int(self.max_episode_length)
+
+    def _show_all_waypoint(self):
+        marker_cfg = SPHERE_MARKER_CFG.replace(
+            prim_path="/Visuals/Waypoints",
+        )
+        marker_cfg.markers["sphere"].radius = 0.1
+        waypoint_visualizer = VisualizationMarkers(marker_cfg)
+
+        for env_ids in range(self.num_envs):
+            waypoint_visualizer.visualize(self._waypoints_pos[env_ids])
+
+    def _show_depth_frame(self):
+        if not self.cfg.show_depth_frame:
+            return
+
+        depth_frame = (
+            self._depth_map_buf[self.i_follow_env, 0, :, :].detach().cpu().numpy()
+        )
+        depth_frame = cv2.resize(
+            depth_frame, None, fx=5, fy=5, interpolation=cv2.INTER_NEAREST
+        )
+
+        cv2.imshow("Robot Depth Frame", depth_frame)
+        cv2.waitKey(1)
+
+    def _show_current_waypoint(self):
+        if not self.cfg.show_waypoint:
+            return
+
+        env_ids = self._robot._ALL_INDICES
+        current_goal = self._waypoints_pos[env_ids, self._idx_waypoint]
+
+        self.current_waypoint_visualizer.visualize(current_goal)
