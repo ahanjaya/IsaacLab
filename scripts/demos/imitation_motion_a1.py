@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -32,19 +32,19 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import numpy as np
-import torch
 import os
+import torch
 
 import isaacsim.core.utils.prims as prim_utils
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
+from isaaclab.utils import motion_imitation_utils as miu
 
 ##
 # Pre-defined configs
 ##
 from isaaclab_assets.robots.unitree import UNITREE_A1_CFG  # isort:skip
-from isaaclab.utils import motion_imitation_utils as miu
 
 
 def define_origins(num_origins: int, spacing: float) -> list[list[float]]:
@@ -86,9 +86,7 @@ def design_scene() -> tuple[dict, list[list[float]]]:
     unitree_a1 = Articulation(UNITREE_A1_CFG.replace(prim_path="/World/Origin1/Robot"))
 
     # return the scene information
-    scene_entities = {
-        "unitree_a1": unitree_a1
-    }
+    scene_entities = {"unitree_a1": unitree_a1}
 
     return scene_entities, origins
 
@@ -157,19 +155,46 @@ def _load_motion(motion_path, max_time, sim):
         # FL Calf,  FF Calf,    RL Calf,    RR calf
 
         reordered_pose = np.array([
-            pose[0], pose[1], pose[2],  # X, Y, Z Pos
-            pose[6], pose[3], pose[4], pose[5],  # W, X, Y, Z Quat
-            pose[10], pose[7], pose[16], pose[13],  # HIP -> FL, FR, RL, RR
-            pose[11], pose[8], pose[17], pose[14],  # Thigh -> FL, FR, RL, RR
-            pose[12], pose[9], pose[18], pose[15],  # Calf -> FL, FR, RL, RR
+            pose[0],
+            pose[1],
+            pose[2],  # X, Y, Z Pos
+            pose[6],
+            pose[3],
+            pose[4],
+            pose[5],  # W, X, Y, Z Quat
+            pose[10],
+            pose[7],
+            pose[16],
+            pose[13],  # HIP -> FL, FR, RL, RR
+            pose[11],
+            pose[8],
+            pose[17],
+            pose[14],  # Thigh -> FL, FR, RL, RR
+            pose[12],
+            pose[9],
+            pose[18],
+            pose[15],  # Calf -> FL, FR, RL, RR
         ])
 
         reordered_vels = np.array([
-            vels[0], vels[1], vels[2],  # Lin vel (No change).
-            vels[3], vels[4], vels[5],  # Ang vel
-            pose[9],  pose[6], pose[15], pose[12],  # HIP -> FL, FR, RL, RR
-            pose[10], pose[7], pose[16], pose[13],  # Thigh -> FL, FR, RL, RR
-            pose[11], pose[8], pose[17], pose[14],  # Calf -> FL, FR, RL, RR
+            vels[0],
+            vels[1],
+            vels[2],  # Lin vel (No change).
+            vels[3],
+            vels[4],
+            vels[5],  # Ang vel
+            pose[9],
+            pose[6],
+            pose[15],
+            pose[12],  # HIP -> FL, FR, RL, RR
+            pose[10],
+            pose[7],
+            pose[16],
+            pose[13],  # Thigh -> FL, FR, RL, RR
+            pose[11],
+            pose[8],
+            pose[17],
+            pose[14],  # Calf -> FL, FR, RL, RR
         ])
 
         np_pose_frames.append(reordered_pose)
@@ -214,16 +239,12 @@ def run_simulator(sim: sim_utils.SimulationContext, entities: dict[str, Articula
     # motion_fn = "hop-inplace-3_unity.txt"
     max_time = 15.0
 
-    (
-        max_episode_length,
-        tensor_ref_root_pose,
-        tensor_ref_pd_targets,
-        tensor_ref_root_vels,
-        tensor_ref_pd_vels
-    ) = _load_motion(
-        motion_path=os.path.join(os.getcwd(), motions_root, motion_fn),
-        max_time=max_time,
-        sim=sim,
+    (max_episode_length, tensor_ref_root_pose, tensor_ref_pd_targets, tensor_ref_root_vels, tensor_ref_pd_vels) = (
+        _load_motion(
+            motion_path=os.path.join(os.getcwd(), motions_root, motion_fn),
+            max_time=max_time,
+            sim=sim,
+        )
     )
 
     cam_pos = np.array([0.7, 1.5, 0.7])
@@ -274,7 +295,7 @@ def main():
             dt=0.005,  # slower in visual 200Hz
             # dt=0.01, # faster in visual 100Hz
             gravity=(0.0, 0.0, -9.81),
-            render_interval=1, # decimation
+            render_interval=1,  # decimation
         )
     )
 
