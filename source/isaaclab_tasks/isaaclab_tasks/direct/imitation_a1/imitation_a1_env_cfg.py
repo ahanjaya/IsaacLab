@@ -5,24 +5,20 @@
 
 from __future__ import annotations
 
+##
+# Pre-defined configs
+##
+from isaaclab_assets.robots.unitree import UNITREE_A1_ANIM_CFG, UNITREE_A1_CFG
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
+from isaaclab.envs.ui import BaseEnvWindow
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
-
-from isaaclab.envs.ui import BaseEnvWindow
-
-##
-# Pre-defined configs
-##
-from isaaclab_assets.robots.unitree import (
-    UNITREE_A1_ANIM_CFG,
-    UNITREE_A1_CFG,
-)
 
 
 class ImitationA1EnvWindow(BaseEnvWindow):
@@ -82,8 +78,8 @@ class ImitationA1EnvCfg(DirectRLEnvCfg):
         terrain_type="plane",
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
-            friction_combine_mode="multiply",  # average
-            restitution_combine_mode="multiply",  # average
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
             static_friction=1.0,
             dynamic_friction=1.0,
             restitution=0.0,
@@ -92,14 +88,10 @@ class ImitationA1EnvCfg(DirectRLEnvCfg):
     )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=4096, env_spacing=1.0, replicate_physics=True
-    )
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=1.0, replicate_physics=True)
 
     # robot
-    robot: ArticulationCfg = UNITREE_A1_CFG.replace(
-        prim_path="/World/envs/env_.*/Robot"
-    )
+    robot: ArticulationCfg = UNITREE_A1_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*",
         history_length=1,
@@ -108,9 +100,7 @@ class ImitationA1EnvCfg(DirectRLEnvCfg):
     )
 
     # animation
-    animation: ArticulationCfg = UNITREE_A1_ANIM_CFG.replace(
-        prim_path="/World/envs/env_.*/Animation"
-    )
+    animation: ArticulationCfg = UNITREE_A1_ANIM_CFG.replace(prim_path="/World/envs/env_.*/Animation")
 
     # reward scales
     weight_joint_pos = 0.5

@@ -19,6 +19,7 @@ Reference: https://github.com/unitreerobotics/unitree_ros
 """
 
 import os
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ActuatorNetMLPCfg, DCMotorCfg, ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
@@ -156,7 +157,8 @@ UNITREE_A1_UNINSTANCEABLE_CFG = ArticulationCfg(
             collision_enabled=False,
         ),
         visual_material=sim_utils.PreviewSurfaceCfg(
-            diffuse_color=(1.0, 0.0, 0.0), metallic=0.5,
+            diffuse_color=(1.0, 0.0, 0.0),
+            metallic=0.5,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(

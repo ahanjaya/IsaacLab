@@ -5,9 +5,9 @@
 
 from __future__ import annotations
 
+import gymnasium as gym
 import numpy as np
 import os
-import gymnasium as gym
 import torch
 from collections.abc import Sequence
 
@@ -17,14 +17,10 @@ import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
+from isaaclab.markers import VisualizationMarkers
+from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils import motion_imitation_utils as miu
-
-from isaaclab.markers import VisualizationMarkers
-from isaaclab.markers.config import (
-    BLUE_ARROW_X_MARKER_CFG,
-    GREEN_ARROW_X_MARKER_CFG,
-)
 
 from .imitation_a1_env_cfg import ImitationA1EnvCfg
 
@@ -32,18 +28,12 @@ from .imitation_a1_env_cfg import ImitationA1EnvCfg
 class ImitationA1Env(DirectRLEnv):
     cfg: ImitationA1EnvCfg
 
-    def __init__(
-        self, cfg: ImitationA1EnvCfg, render_mode: str | None = None, **kwargs
-    ):
+    def __init__(self, cfg: ImitationA1EnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         # create auxiliary variables for computing applied action, observations and rewards
-        self.robot_joint_lower_limits = self._robot.data.default_joint_limits[
-            0, :, 0
-        ].to(device=self.device)
-        self.robot_joint_upper_limits = self._robot.data.default_joint_limits[
-            0, :, 1
-        ].to(device=self.device)
+        self.robot_joint_lower_limits = self._robot.data.default_joint_limits[0, :, 0].to(device=self.device)
+        self.robot_joint_upper_limits = self._robot.data.default_joint_limits[0, :, 1].to(device=self.device)
 
         # Get specific body indices
         self._body_idx, _ = self._contact_sensor.find_bodies("trunk")
@@ -54,9 +44,7 @@ class ImitationA1Env(DirectRLEnv):
         self._n_foot = len(self._foot_ids)
 
         self._load_motion(
-            motion_path=os.path.join(
-                os.getcwd(), self.cfg.motions_root, self.cfg.motion_fn
-            ),
+            motion_path=os.path.join(os.getcwd(), self.cfg.motions_root, self.cfg.motion_fn),
         )
         self._setup_utility_tensors()
 
@@ -103,10 +91,7 @@ class ImitationA1Env(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        processed_actions = (
-            actions * self.cfg.action_scale * 3.1415
-            + self._robot.data.default_joint_pos
-        )
+        processed_actions = actions * self.cfg.action_scale * 3.1415 + self._robot.data.default_joint_pos
         self._actions = torch.clamp(
             processed_actions,
             self.robot_joint_lower_limits,
@@ -165,9 +150,7 @@ class ImitationA1Env(DirectRLEnv):
             robot_joint_pos=self._robot.data.joint_pos,
             animation_joint_vel=self._animation.data.joint_vel,
             robot_joint_vel=self._robot.data.joint_vel,
-            animation_end_effector_pos=self._animation.data.body_state_w[
-                :, self._foot_ids, :3
-            ],
+            animation_end_effector_pos=self._animation.data.body_state_w[:, self._foot_ids, :3],
             robot_end_effector_pos=self._robot.data.body_state_w[:, self._foot_ids, :3],
             animation_root_pos=self._animation.data.root_pos_w,
             robot_root_pos=self._robot.data.root_pos_w,
@@ -211,9 +194,7 @@ class ImitationA1Env(DirectRLEnv):
         time_outs = self.episode_length_buf >= self.max_episode_length - 1
 
         # Check position error
-        root_pos_diff = torch.square(
-            self._animation.data.root_pos_w - self._robot.data.root_pos_w
-        )
+        root_pos_diff = torch.square(self._animation.data.root_pos_w - self._robot.data.root_pos_w)
         root_pos_err = root_pos_diff.sum(dim=1)
         is_root_pos_err = root_pos_err > self.cfg.root_reset_dist
 
@@ -224,9 +205,7 @@ class ImitationA1Env(DirectRLEnv):
             math_utils.quat_conjugate(self._robot.data.root_quat_w),
         )
         root_rot_diff = math_utils.normalize(root_rot_diff)
-        root_rot_diff_angle = math_utils.normalize_angle(
-            2 * torch.acos(root_rot_diff[:, 0])
-        )
+        root_rot_diff_angle = math_utils.normalize_angle(2 * torch.acos(root_rot_diff[:, 0]))
         is_root_rot_err = torch.square(root_rot_diff_angle) > self.cfg.root_reset_dist
 
         is_contacts = self._check_contacts()
@@ -270,20 +249,14 @@ class ImitationA1Env(DirectRLEnv):
         extras = dict()
         for key in self._episode_sums.keys():
             episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
-            extras["Episode_Reward/" + key] = (
-                episodic_sum_avg / self.max_episode_length_s
-            )
+            extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
             self._episode_sums[key][env_ids] = 0.0
         self.extras["log"] = dict()
         self.extras["log"].update(extras)
 
         extras = dict()
-        extras["Episode_Termination/base_contact"] = torch.count_nonzero(
-            self.reset_terminated[env_ids]
-        ).item()
-        extras["Episode_Termination/time_out"] = torch.count_nonzero(
-            self.reset_time_outs[env_ids]
-        ).item()
+        extras["Episode_Termination/base_contact"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
+        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
         self.extras["log"].update(extras)
 
     def _set_debug_vis_impl(self, debug_vis: bool):
@@ -347,13 +320,8 @@ class ImitationA1Env(DirectRLEnv):
         new_cam_pos = actor_pos + self.follow_cam_offset
         new_cam_target = actor_pos
 
-        self.follow_cam_pos = (
-            self.k_smooth * self.follow_cam_pos + (1 - self.k_smooth) * new_cam_pos
-        )
-        self.follow_cam_target = (
-            self.k_smooth * self.follow_cam_target
-            + (1 - self.k_smooth) * new_cam_target
-        )
+        self.follow_cam_pos = self.k_smooth * self.follow_cam_pos + (1 - self.k_smooth) * new_cam_pos
+        self.follow_cam_target = self.k_smooth * self.follow_cam_target + (1 - self.k_smooth) * new_cam_target
 
         set_camera_view(self.follow_cam_pos, self.follow_cam_target)
 
@@ -363,15 +331,11 @@ class ImitationA1Env(DirectRLEnv):
 
         robot_root_pose_w = self._robot.data.root_state_w
         robot_root_pose_w[:, 2] += 0.1
-        self.robot_pose_visualizer.visualize(
-            robot_root_pose_w[:, :3], robot_root_pose_w[:, 3:7]
-        )
+        self.robot_pose_visualizer.visualize(robot_root_pose_w[:, :3], robot_root_pose_w[:, 3:7])
 
         animation_root_pose_w = self._animation.data.root_state_w
         animation_root_pose_w[:, 2] += 0.1
-        self.animation_pose_visualizer.visualize(
-            animation_root_pose_w[:, :3], animation_root_pose_w[:, 3:7]
-        )
+        self.animation_pose_visualizer.visualize(animation_root_pose_w[:, :3], animation_root_pose_w[:, 3:7])
 
     def _load_motion(self, motion_path):
         """Loads a reference motion from disk. Pre-generates all frames and push
@@ -388,9 +352,7 @@ class ImitationA1Env(DirectRLEnv):
         # Pre-generate all frames for the whole episode + some extra cycles.
         # The extra cycles are needed because the robot is reset to a random
         # reference index between 0 and 2 cycles.
-        time_axis = np.arange(
-            0, self.cfg.episode_length_s + 5 * step_size * self.motion_length, step_size
-        )
+        time_axis = np.arange(0, self.cfg.episode_length_s + 5 * step_size * self.motion_length, step_size)
         print(f"\tTime_axis: {time_axis.shape}")
 
         self.np_pose_frames = []
@@ -405,52 +367,48 @@ class ImitationA1Env(DirectRLEnv):
             # RR Hip, RR Thigh, RR Calf,
             # RL Hip, RL Thigh, RL Calf,
 
-            reordered_pose = np.array(
-                [
-                    pose[0],  # X Pose
-                    pose[1],  # Y Pose
-                    pose[2],  # Z Pose
-                    pose[6],  # W Quat
-                    pose[3],  # X Quat
-                    pose[4],  # Y Quat
-                    pose[5],  # Z Quat
-                    pose[10],  # FL Hip
-                    pose[7],  # FR Hip
-                    pose[16],  # RL Hip
-                    pose[13],  # RR Hip
-                    pose[11],  # FL Thigh
-                    pose[8],  # FR Thigh
-                    pose[17],  # RL Thigh
-                    pose[14],  # RR Thigh
-                    pose[12],  # FL Calf
-                    pose[9],  # FR Calf
-                    pose[18],  # RL Calf
-                    pose[15],  # RR Calf
-                ]
-            )
+            reordered_pose = np.array([
+                pose[0],  # X Pose
+                pose[1],  # Y Pose
+                pose[2],  # Z Pose
+                pose[6],  # W Quat
+                pose[3],  # X Quat
+                pose[4],  # Y Quat
+                pose[5],  # Z Quat
+                pose[10],  # FL Hip
+                pose[7],  # FR Hip
+                pose[16],  # RL Hip
+                pose[13],  # RR Hip
+                pose[11],  # FL Thigh
+                pose[8],  # FR Thigh
+                pose[17],  # RL Thigh
+                pose[14],  # RR Thigh
+                pose[12],  # FL Calf
+                pose[9],  # FR Calf
+                pose[18],  # RL Calf
+                pose[15],  # RR Calf
+            ])
 
-            reordered_vels = np.array(
-                [
-                    vels[0],  # X Lin Vel
-                    vels[1],  # Y Lin Vel
-                    vels[2],  # Z Lin Vel
-                    vels[3],  # X Ang Vel
-                    vels[4],  # Y Ang Vel
-                    vels[5],  # Z Ang Vel
-                    pose[9],  # FL Hip Vel
-                    pose[6],  # FR Hip Vel
-                    pose[15],  # RL Hip Vel
-                    pose[12],  # RR Hip Vel
-                    pose[10],  # FL Thigh Vel
-                    pose[7],  # FR Thigh Vel
-                    pose[16],  # RL Thigh Vel
-                    pose[13],  # RR Thigh Vel
-                    pose[11],  # FL Calf Vel
-                    pose[8],  # FR Calf Vel
-                    pose[17],  # RL Calf Vel
-                    pose[14],  # RR Calf Vel
-                ]
-            )
+            reordered_vels = np.array([
+                vels[0],  # X Lin Vel
+                vels[1],  # Y Lin Vel
+                vels[2],  # Z Lin Vel
+                vels[3],  # X Ang Vel
+                vels[4],  # Y Ang Vel
+                vels[5],  # Z Ang Vel
+                pose[9],  # FL Hip Vel
+                pose[6],  # FR Hip Vel
+                pose[15],  # RL Hip Vel
+                pose[12],  # RR Hip Vel
+                pose[10],  # FL Thigh Vel
+                pose[7],  # FR Thigh Vel
+                pose[16],  # RL Thigh Vel
+                pose[13],  # RR Thigh Vel
+                pose[11],  # FL Calf Vel
+                pose[8],  # FR Calf Vel
+                pose[17],  # RL Calf Vel
+                pose[14],  # RR Calf Vel
+            ])
 
             self.np_pose_frames.append(reordered_pose)
             self.np_vel_frames.append(reordered_vels)
@@ -464,34 +422,24 @@ class ImitationA1Env(DirectRLEnv):
         assert self.np_pose_frames.shape[0] == self.np_vel_frames.shape[0]
 
         # Convert to PyTorch GPU tensors.
-        self.tensor_ref_pose = torch.tensor(
-            self.np_pose_frames, dtype=torch.float32, device=self.device
-        )
-        self.tensor_ref_vels = torch.tensor(
-            self.np_vel_frames, dtype=torch.float32, device=self.device
-        )
+        self.tensor_ref_pose = torch.tensor(self.np_pose_frames, dtype=torch.float32, device=self.device)
+        self.tensor_ref_vels = torch.tensor(self.np_vel_frames, dtype=torch.float32, device=self.device)
 
         # Create other useful views.
         self.tensor_ref_root_pose = self.tensor_ref_pose[:, :7]  # XYZ + Quat WXYZ
         self.tensor_ref_joint_targets = self.tensor_ref_pose[:, 7:]  # 12 joints
-        self.tensor_ref_root_vels = self.tensor_ref_vels[
-            :, :6
-        ]  # Linear XYZ + Angular XYZ
+        self.tensor_ref_root_vels = self.tensor_ref_vels[:, :6]  # Linear XYZ + Angular XYZ
         self.tensor_ref_joint_vels = self.tensor_ref_vels[:, 6:]
 
-        # Used to sync the postion of kin character to sim character by offseting
+        # Used to sync the position of kin character to sim character by offsetting
         # its position.
-        self.tensor_ref_offset_pos = torch.zeros(
-            (self.num_envs, 3), device=self.device, dtype=torch.float32
-        )
+        self.tensor_ref_offset_pos = torch.zeros((self.num_envs, 3), device=self.device, dtype=torch.float32)
 
         lookahead_secs = [0.0333, 0.0666, 0.3333, 1.0]  # Lookahead time in seconds.
         lookahead_inds = [int(s * (1 / step_size) + 0.5) for s in lookahead_secs]
         # Used to increment from current index to get future target poses from
         # the reference motion.
-        self.target_pose_inc_indices = torch.tensor(
-            lookahead_inds, dtype=torch.long, device=self.device
-        )
+        self.target_pose_inc_indices = torch.tensor(lookahead_inds, dtype=torch.long, device=self.device)
         self.len_target_pose_inc = len(self.target_pose_inc_indices)
 
     def _update_animation(self):
@@ -501,13 +449,10 @@ class ImitationA1Env(DirectRLEnv):
         # Reset root position (x, y) offset every cycle of the motion length.
         curr_phase = self.episode_length_buf // self.motion_length > 0
         reset_phase = (self.episode_length_buf % self.motion_length) == 0
-        resync_env_ids = (
-            curr_phase.logical_and(reset_phase).nonzero(as_tuple=False).flatten()
-        )
+        resync_env_ids = curr_phase.logical_and(reset_phase).nonzero(as_tuple=False).flatten()
 
         self.tensor_ref_offset_pos[resync_env_ids, :2] = (
-            self._anim_root_pos[resync_env_ids, :2]
-            - self._robot.data.root_pos_w[resync_env_ids, :2]
+            self._anim_root_pos[resync_env_ids, :2] - self._robot.data.root_pos_w[resync_env_ids, :2]
         )
         self._anim_root_pos[:, :3] -= self.tensor_ref_offset_pos
 
@@ -521,26 +466,12 @@ class ImitationA1Env(DirectRLEnv):
         if net_contact_forces is None:
             return torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
-        body_contact = (
-            torch.norm(net_contact_forces[:, self._body_idx, :], dim=1)
-            >= self.cfg.reset_contact_threshold
-        )
-        hip_contact = (
-            torch.norm(net_contact_forces[:, self._hip_ids, :], dim=1)
-            >= self.cfg.reset_contact_threshold
-        )
-        thigh_contact = (
-            torch.norm(net_contact_forces[:, self._thigh_ids, :], dim=1)
-            >= self.cfg.reset_contact_threshold
-        )
-        calf_contact = (
-            torch.norm(net_contact_forces[:, self._calf_ids, :], dim=1)
-            >= self.cfg.reset_contact_threshold
-        )
+        body_contact = torch.norm(net_contact_forces[:, self._body_idx, :], dim=1) >= self.cfg.reset_contact_threshold
+        hip_contact = torch.norm(net_contact_forces[:, self._hip_ids, :], dim=1) >= self.cfg.reset_contact_threshold
+        thigh_contact = torch.norm(net_contact_forces[:, self._thigh_ids, :], dim=1) >= self.cfg.reset_contact_threshold
+        calf_contact = torch.norm(net_contact_forces[:, self._calf_ids, :], dim=1) >= self.cfg.reset_contact_threshold
 
-        all_contacts = torch.cat(
-            [body_contact, hip_contact, thigh_contact, calf_contact], dim=-1
-        )
+        all_contacts = torch.cat([body_contact, hip_contact, thigh_contact, calf_contact], dim=-1)
 
         return torch.any(all_contacts, dim=1)
 
@@ -548,17 +479,12 @@ class ImitationA1Env(DirectRLEnv):
         net_contact_forces = self._contact_sensor.data.net_forces_w
 
         if net_contact_forces is None:
-            return torch.zeros(
-                self.num_envs, self._n_foot, dtype=torch.bool, device=self.device
-            )
+            return torch.zeros(self.num_envs, self._n_foot, dtype=torch.bool, device=self.device)
 
-        foot_contacts = torch.zeros(
-            self.num_envs, self._n_foot, dtype=torch.bool, device=self.device
-        )
+        foot_contacts = torch.zeros(self.num_envs, self._n_foot, dtype=torch.bool, device=self.device)
         for i, foot_id in enumerate(self._foot_ids):
             foot_contacts[:, i] = (
-                torch.norm(net_contact_forces[:, foot_id, :], dim=1)
-                >= self.cfg.foot_contact_threshold
+                torch.norm(net_contact_forces[:, foot_id, :], dim=1) >= self.cfg.foot_contact_threshold
             )
         return foot_contacts
 
@@ -623,9 +549,7 @@ def compute_future_frames(
     future_target_frames = ref_motion_frames[future_indices, 3:]
 
     # normalize orientation
-    future_frames_euler_xy = torch.zeros(
-        (num_envs, len_target_pose_inc, 2), dtype=torch.float32, device=device
-    )
+    future_frames_euler_xy = torch.zeros((num_envs, len_target_pose_inc, 2), dtype=torch.float32, device=device)
 
     for idx_frame in range(len_target_pose_inc):
         current_frame_quat = future_target_frames[:, idx_frame, :4]
@@ -642,9 +566,7 @@ def compute_future_frames(
     future_frames_euler_xy = future_frames_euler_xy.reshape(-1, 2 * len_target_pose_inc)
 
     # flatten future target joints
-    future_target_joints = future_target_frames[:, :, 4:].reshape(
-        -1, num_actions * len_target_pose_inc
-    )
+    future_target_joints = future_target_frames[:, :, 4:].reshape(-1, num_actions * len_target_pose_inc)
 
     return torch.cat(
         [
@@ -714,13 +636,9 @@ def compute_rewards(
         animation_end_effector_pos[:, idx] = math_utils.quat_rotate(
             animation_inv_heading_rot, animation_end_effector_pos[:, idx]
         )
-        robot_end_effector_pos[:, idx] = math_utils.quat_rotate(
-            robot_inv_heading_rot, robot_end_effector_pos[:, idx]
-        )
+        robot_end_effector_pos[:, idx] = math_utils.quat_rotate(robot_inv_heading_rot, robot_end_effector_pos[:, idx])
 
-    ef_diff_xy = torch.square(
-        animation_end_effector_pos[:, :, :2] - robot_end_effector_pos[:, :, :2]
-    )
+    ef_diff_xy = torch.square(animation_end_effector_pos[:, :, :2] - robot_end_effector_pos[:, :, :2])
     ef_diff_xy = ef_diff_xy.sum(dim=2)
     ef_diff_z = scale_ef_err_height * torch.square(
         animation_end_effector_pos[:, :, 2] - robot_end_effector_pos[:, :, 2]
@@ -732,15 +650,11 @@ def compute_rewards(
     root_pos_diff = torch.square(animation_root_pos - robot_root_pos)
     root_pos_err = root_pos_diff.sum(dim=1)
 
-    root_rot_diff = math_utils.quat_mul(
-        animation_root_ori, math_utils.quat_conjugate(robot_root_ori)
-    )
+    root_rot_diff = math_utils.quat_mul(animation_root_ori, math_utils.quat_conjugate(robot_root_ori))
     root_rot_diff = math_utils.normalize(root_rot_diff)
 
     # axis-angle representation but we only care about the angle
-    root_rot_diff_angle = math_utils.normalize_angle(
-        2 * torch.acos(root_rot_diff[:, 0])
-    )
+    root_rot_diff_angle = math_utils.normalize_angle(2 * torch.acos(root_rot_diff[:, 0]))
     root_rot_err = torch.square(root_rot_diff_angle)
 
     # Compound position and orientation error for root as in motion_imitation codebase.
