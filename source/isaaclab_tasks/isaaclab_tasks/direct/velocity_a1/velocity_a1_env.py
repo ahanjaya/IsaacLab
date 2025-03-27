@@ -58,7 +58,7 @@ class VelocityA1Env(DirectRLEnv):
         # Get specific body indices
         self._base_id, _ = self._contact_sensor.find_bodies("trunk")
         self._feet_ids, _ = self._contact_sensor.find_bodies(".*_foot")
-        self._underisred_contact_body_ids, _ = self._contact_sensor.find_bodies(".*thigh")
+        self._undesired_contact_body_ids, _ = self._contact_sensor.find_bodies(".*thigh")
 
         # Randomize robot friction
         env_ids = self._robot._ALL_INDICES
@@ -152,10 +152,10 @@ class VelocityA1Env(DirectRLEnv):
         air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1) * (
             torch.norm(self._commands[:, :2], dim=1) > 0.1
         )
-        # undersired contacts
+        # undesired contacts
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         is_contact = (
-            torch.max(torch.norm(net_contact_forces[:, :, self._underisred_contact_body_ids], dim=-1), dim=1)[0] > 1.0
+            torch.max(torch.norm(net_contact_forces[:, :, self._undesired_contact_body_ids], dim=-1), dim=1)[0] > 1.0
         )
         contacts = torch.sum(is_contact, dim=1)
         # flat orientation
