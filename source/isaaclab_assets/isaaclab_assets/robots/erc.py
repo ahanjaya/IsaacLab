@@ -19,10 +19,10 @@ from isaaclab.assets.articulation import ArticulationCfg
 ##
 # Configuration
 ##
-ERC_NXP_DIR = "source/isaaclab_assets/data/Robots/ERC/NXP"
-ERC_NXP_CFG = ArticulationCfg(
+NXP_DIR = "source/isaaclab_assets/data/Robots/ERC/NXP"
+NXP_LOWER_BODY_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path=os.path.join(os.getcwd(), ERC_NXP_DIR, "nxp.usd"),
+        usd_path=os.path.join(os.getcwd(), NXP_DIR, "lower_body/full_collision/nxp_lower_full.usd"),
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -61,4 +61,9 @@ ERC_NXP_CFG = ArticulationCfg(
             friction=0.0,
         ),
     },
+)
+
+NXP_LOWER_BODY_MINIMAL_CFG = NXP_LOWER_BODY_CFG.copy()
+NXP_LOWER_BODY_MINIMAL_CFG.spawn.usd_path = os.path.join(
+    os.getcwd(), NXP_DIR, "lower_body/minimal_collision/nxp_lower_minimal.usd"
 )
