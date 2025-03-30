@@ -8,7 +8,8 @@ from __future__ import annotations
 ##
 # Pre-defined configs
 ##
-from isaaclab_assets.robots.erc import NXP_LOWER_BODY_MINIMAL_CFG
+from isaaclab_assets.robots.erc import NXP_LOWER_BODY_MINIMAL_CFG, NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG
+
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
@@ -102,15 +103,17 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
     episode_length_s = 20.0
     decimation = 4
     action_scale = 0.5
-    action_space = 12
+    action_space = 13
     observation_space = 48
     state_space = 0
 
     # debug visualization
-    debug_vis = False
-    debug_marker = False
+    debug_vis = True
+    debug_marker = True
 
     class camera_viewer:
+        follow_camera = False
+
         # # Closer Side View
         # pos = [0.7, 1.5, 0.7]
         # target = [0.5, 0.0, 0.0]
@@ -151,17 +154,13 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
     )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=4096, env_spacing=2.5, replicate_physics=True
-    )
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2.5, replicate_physics=True)
 
     # events
     # events: EventCfg = EventCfg()
 
     # robot
-    robot: ArticulationCfg = NXP_LOWER_BODY_MINIMAL_CFG.replace(
-        prim_path="/World/envs/env_.*/Robot"
-    )
+    robot: ArticulationCfg = NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     # self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
 
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
@@ -196,11 +195,11 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
     dof_torques_l2_reward_scale = -2.0e-6
     dof_acc_l2_reward_scale = -1.0e-7
     action_rate_l2_reward_scale = -0.005
-    feet_air_time_reward_scale = 0.75
-    feet_air_time_threshold = 0.4
+    feet_air_time_reward_scale = 1.0
+    feet_air_time_threshold = 0.6
     flat_orientation_l2_reward_scale = -1.0
     dof_pos_limits_reward_scale = -1.0
     termination_reward_scale = -200.0
     feet_slide_reward_scale = -0.1
     joint_deviation_hip_reward_scale = -0.1
-    # joint_deviation_torso_reward_scale = -0.1
+    joint_deviation_torso_reward_scale = -0.1
