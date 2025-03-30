@@ -9,6 +9,7 @@ from __future__ import annotations
 # Pre-defined configs
 ##
 from isaaclab_assets.robots.unitree import G1_MINIMAL_CFG
+
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
@@ -151,17 +152,13 @@ class VelocityG1FlatEnvCfg(DirectRLEnvCfg):
     )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=4096, env_spacing=2.5, replicate_physics=True
-    )
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2.5, replicate_physics=True)
 
     # events
     events: EventCfg = EventCfg()
 
     # robot
-    robot: ArticulationCfg = G1_MINIMAL_CFG.replace(
-        prim_path="/World/envs/env_.*/Robot"
-    )
+    robot: ArticulationCfg = G1_MINIMAL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     # self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
 
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
