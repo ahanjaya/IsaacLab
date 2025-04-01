@@ -35,7 +35,7 @@ NXP_LOWER_BODY_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.9),
+        pos=(0.0, 0.0, 0.85),
         joint_pos={
             "left_hip_pitch_joint": 0.52,  # 30 degrees
             "right_hip_pitch_joint": -0.52,  # -30 degrees
@@ -51,21 +51,38 @@ NXP_LOWER_BODY_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.95,
     actuators={
-        "legs": DCMotorCfg(
+        "legs": ImplicitActuatorCfg(
             joint_names_expr=[
-                ".*_hip_pitch_joint",
-                ".*_hip_roll_joint",
                 ".*_hip_yaw_joint",
+                ".*_hip_roll_joint",
+                ".*_hip_pitch_joint",
                 ".*_knee_joint",
-                ".*_ankle_pitch_joint",
-                ".*_ankle_roll_joint",
             ],
-            effort_limit=33.5,
-            saturation_effort=33.5,
-            velocity_limit=21.0,
-            stiffness=25.0,
-            damping=0.5,
-            friction=0.0,
+            effort_limit=300,
+            velocity_limit=100.0,
+            stiffness={
+                ".*_hip_yaw_joint": 150.0,
+                ".*_hip_roll_joint": 150.0,
+                ".*_hip_pitch_joint": 200.0,
+                ".*_knee_joint": 200.0,
+            },
+            damping={
+                ".*_hip_yaw_joint": 5.0,
+                ".*_hip_roll_joint": 5.0,
+                ".*_hip_pitch_joint": 5.0,
+                ".*_knee_joint": 5.0,
+            },
+            armature={
+                ".*_hip_.*": 0.01,
+                ".*_knee_joint": 0.01,
+            },
+        ),
+        "feet": ImplicitActuatorCfg(
+            effort_limit=20,
+            joint_names_expr=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"],
+            stiffness=20.0,
+            damping=2.0,
+            armature=0.01,
         ),
     },
 )
@@ -103,7 +120,6 @@ NXP_LOWER_BODY_WITH_TORSO_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.85),
-        # joint_pos={".*": 0.0},
         joint_pos={
             "left_hip_pitch_joint": 0.52,  # 30 degrees
             "right_hip_pitch_joint": -0.52,  # -30 degrees
@@ -119,62 +135,46 @@ NXP_LOWER_BODY_WITH_TORSO_CFG = ArticulationCfg(
         joint_vel={".*": 0.0},
     ),
     soft_joint_pos_limit_factor=0.9,
-    # actuators={
-    #     "legs": DCMotorCfg(
-    #         joint_names_expr=[
-    #             ".*_hip_pitch_joint",
-    #             ".*_hip_roll_joint",
-    #             ".*_hip_yaw_joint",
-    #             ".*_knee_joint",
-    #             ".*_ankle_pitch_joint",
-    #             ".*_ankle_roll_joint",
-    #             "torso_yaw_joint",
-    #         ],
-    #         effort_limit=33.5,
-    #         saturation_effort=33.5,
-    #         velocity_limit=21.0,
-    #         stiffness=25.0,
-    #         damping=0.5,
-    #         friction=0.0,
-    #     ),
-    # },
     actuators={
-        "legs": ImplicitActuatorCfg(
-            joint_names_expr=[
-                ".*_hip_yaw_joint",
-                ".*_hip_roll_joint",
-                ".*_hip_pitch_joint",
-                ".*_knee_joint",
-                "torso_yaw_joint",
-            ],
-            effort_limit=300,
-            velocity_limit=100.0,
-            stiffness={
-                ".*_hip_yaw_joint": 150.0,
-                ".*_hip_roll_joint": 150.0,
-                ".*_hip_pitch_joint": 200.0,
-                ".*_knee_joint": 200.0,
-                "torso_yaw_joint": 200.0,
-            },
-            damping={
-                ".*_hip_yaw_joint": 5.0,
-                ".*_hip_roll_joint": 5.0,
-                ".*_hip_pitch_joint": 5.0,
-                ".*_knee_joint": 5.0,
-                "torso_yaw_joint": 5.0,
-            },
-            armature={
-                ".*_hip_.*": 0.01,
-                ".*_knee_joint": 0.01,
-                "torso_yaw_joint": 0.01,
-            },
-        ),
-        "feet": ImplicitActuatorCfg(
-            effort_limit=20,
-            joint_names_expr=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"],
-            stiffness=20.0,
-            damping=2.0,
+        "torso": DCMotorCfg(
+            joint_names_expr=["torso_yaw_joint"],
+            effort_limit=33.5,
+            saturation_effort=33.5,
+            velocity_limit=21.0,
+            stiffness=25.0,
+            damping=0.5,
             armature=0.01,
+            friction=0.0,
+        ),
+        "hip": DCMotorCfg(
+            joint_names_expr=[".*_hip_.*"],
+            effort_limit=88.0,
+            saturation_effort=88.0,
+            velocity_limit=21.0,
+            stiffness=88.0,
+            damping=5.0,
+            armature=0.01,
+            friction=0.0,
+        ),
+        "knee": DCMotorCfg(
+            joint_names_expr=[".*_knee_joint"],
+            effort_limit=139.0,
+            saturation_effort=139.0,
+            velocity_limit=21.0,
+            stiffness=139.0,
+            damping=5.0,
+            armature=0.01,
+            friction=0.0,
+        ),
+        "ankle": DCMotorCfg(
+            joint_names_expr=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"],
+            effort_limit=33.5,
+            saturation_effort=33.5,
+            velocity_limit=21.0,
+            stiffness=25.0,
+            damping=0.5,
+            armature=0.01,
+            friction=0.0,
         ),
     },
 )
