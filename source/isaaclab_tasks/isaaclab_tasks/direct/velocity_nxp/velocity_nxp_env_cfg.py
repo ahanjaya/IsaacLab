@@ -8,7 +8,7 @@ from __future__ import annotations
 ##
 # Pre-defined configs
 ##
-from isaaclab_assets.robots.erc import NXP_LOWER_BODY_MINIMAL_CFG, NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG
+from isaaclab_assets.robots.erc import NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG
 
 import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
