@@ -18,7 +18,7 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG, RED_ARROW_X_MARKER_CFG
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_rotate_inverse, yaw_quat
+from isaaclab.utils.math import quat_from_angle_axis, quat_mul, quat_rotate, quat_rotate_inverse, yaw_quat
 
 from .velocity_nxp_env_cfg import VelocityNXPLowerBodyFlatEnvCfg
 
@@ -64,6 +64,7 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
                 "feet_slide",
                 "joint_deviation_hip",
                 "joint_deviation_torso",
+                "orientation_torso",
             ]
         }
         self._metric_sums = {
@@ -112,6 +113,15 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
 
         self.k_smooth = 0.9
         self.i_follow_env = 0
+
+        self.target_body_roll = np.radians(self.cfg.target_body_roll)
+        self.target_body_pitch = np.radians(self.cfg.target_body_pitch)
+        self.desired_projected_gravity = torch.zeros(
+            self.num_envs,
+            3,
+            dtype=torch.float,
+            device=self.device,
+        )
 
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone()
@@ -235,6 +245,29 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
         )
         joint_deviation_torso = torch.sum(torch.abs(angle), dim=1)
 
+        # desired body orientation
+        target_roll = torch.tensor([self.target_body_roll], dtype=torch.float, device=self.device).repeat(self.num_envs)
+        quat_roll = quat_from_angle_axis(
+            target_roll,
+            torch.tensor([1, 0, 0], dtype=torch.float, device=self.device),
+        )
+
+        target_pitch = torch.tensor([self.target_body_pitch], dtype=torch.float, device=self.device).repeat(
+            self.num_envs
+        )
+        quat_pitch = quat_from_angle_axis(
+            target_pitch,
+            torch.tensor([0, 1, 0], dtype=torch.float, device=self.device),
+        )
+
+        desired_base_quat = quat_mul(quat_roll, quat_pitch)
+        self.desired_projected_gravity = quat_rotate_inverse(desired_base_quat, self._robot.data.GRAVITY_VEC_W)
+
+        orientation_torso = torch.sum(
+            torch.square(self._robot.data.projected_gravity_b[:, :2] - self.desired_projected_gravity[:, :2]),
+            dim=1,
+        )
+
         rewards = {
             "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.track_lin_vel_xy_reward_scale * self.step_dt,
             "track_ang_vel_z_exp": ang_vel_error_mapped * self.cfg.track_ang_vel_z_exp_reward_scale * self.step_dt,
@@ -250,6 +283,7 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
             "feet_slide": feet_slide * self.cfg.feet_slide_reward_scale * self.step_dt,
             "joint_deviation_hip": joint_deviation_hip * self.cfg.joint_deviation_hip_reward_scale * self.step_dt,
             "joint_deviation_torso": joint_deviation_torso * self.cfg.joint_deviation_torso_reward_scale * self.step_dt,
+            "orientation_torso": orientation_torso * self.cfg.orientation_torso_reward_scale * self.step_dt,
         }
 
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
