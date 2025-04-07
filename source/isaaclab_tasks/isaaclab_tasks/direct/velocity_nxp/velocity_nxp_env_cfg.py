@@ -187,6 +187,9 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
     # no terrain curriculum
     # self.curriculum.terrain_levels = None
 
+    target_body_roll = 0.0  # degrees
+    target_body_pitch = 15.0  # degrees
+
     # Rewards
     track_lin_vel_xy_reward_scale = 1.0
     track_ang_vel_z_exp_reward_scale = 1.0
@@ -203,3 +206,5 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
     feet_slide_reward_scale = -0.1
     joint_deviation_hip_reward_scale = -0.1
     joint_deviation_torso_reward_scale = -0.1
+    orientation_torso_reward_scale = -5.0
+    
