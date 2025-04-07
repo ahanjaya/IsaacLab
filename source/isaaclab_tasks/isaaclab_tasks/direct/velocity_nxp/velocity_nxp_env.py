@@ -79,8 +79,8 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
         self._feet_contact_ids, _ = self._contact_sensor.find_bodies(".*_ankle_roll_link")
 
         self._feet_body_ids, _ = self._robot.find_bodies(".*_ankle_roll_link")
-        self._ankle_joint_ids, _ = self._robot.find_joints([".*_ankle_pitch_joint", ".*_ankle_roll_joint"])
-        self._hip_joint_ids, _ = self._robot.find_joints([".*_hip_yaw_joint", ".*_hip_roll_joint"])
+        self._ankle_joint_ids, _ = self._robot.find_joints([".*_ankle_.*"])
+        self._hip_joint_ids, _ = self._robot.find_joints([".*_hip_.*"])
         self._torso_joint_ids, _ = self._robot.find_joints("torso_yaw_joint")
         self._dof_acc_torque_joint_ids, _ = self._robot.find_joints([".*_hip_.*", ".*_knee_joint"])
 
@@ -202,14 +202,12 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
 
         # dof pos limits
         # compute out of limits constraints
-        out_of_limits = -(
-            self._robot.data.joint_pos[:, self._ankle_joint_ids]
-            - self._robot.data.soft_joint_pos_limits[:, self._ankle_joint_ids, 0]
-        ).clip(max=0.0)
-        out_of_limits += (
-            self._robot.data.joint_pos[:, self._ankle_joint_ids]
-            - self._robot.data.soft_joint_pos_limits[:, self._ankle_joint_ids, 1]
-        ).clip(min=0.0)
+        out_of_limits = -(self._robot.data.joint_pos[:, :] - self._robot.data.soft_joint_pos_limits[:, :, 0]).clip(
+            max=0.0
+        )
+        out_of_limits += (self._robot.data.joint_pos[:, :] - self._robot.data.soft_joint_pos_limits[:, :, 1]).clip(
+            min=0.0
+        )
         out_of_limits = torch.sum(out_of_limits, dim=1)
 
         # termination penalty
