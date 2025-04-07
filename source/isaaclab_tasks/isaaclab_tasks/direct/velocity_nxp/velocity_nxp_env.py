@@ -368,11 +368,16 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
     def _set_debug_vis_impl(self, debug_vis: bool):
         if self.cfg.debug_marker:
             if not hasattr(self, "robot_visualizer"):
-                # -- current pose
-                marker_cfg = RED_ARROW_X_MARKER_CFG.copy()
-                marker_cfg.prim_path = "/Visuals/Robot/body_pose"
-                marker_cfg.markers["arrow"].scale = (0.1, 0.1, 0.15)
+                # -- base state
+                marker_cfg = FRAME_MARKER_CFG.copy()
+                marker_cfg.prim_path = "/Visuals/Robot/body_cur_pose"
+                marker_cfg.markers["frame"].scale = (0.15, 0.15, 0.15)
                 self.base_pose_visualizer = VisualizationMarkers(marker_cfg)
+
+                marker_cfg = FRAME_MARKER_CFG.copy()
+                marker_cfg.prim_path = "/Visuals/Robot/body_target_pose"
+                marker_cfg.markers["frame"].scale = (0.25, 0.25, 0.25)
+                self.target_pose_visualizer = VisualizationMarkers(marker_cfg)
 
                 # -- cmd_vel goal
                 marker_cfg = GREEN_ARROW_X_MARKER_CFG.copy()
@@ -388,11 +393,13 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
 
             # set their visibility to true
             self.base_pose_visualizer.set_visibility(True)
+            self.target_pose_visualizer.set_visibility(True)
             self.base_vel_goal_visualizer.set_visibility(True)
             self.base_vel_visualizer.set_visibility(True)
         else:
             if hasattr(self, "robot_visualizer"):
                 self.base_pose_visualizer.set_visibility(False)
+                self.target_pose_visualizer.set_visibility(False)
                 self.base_vel_goal_visualizer.set_visibility(False)
                 self.base_vel_visualizer.set_visibility(False)
 
@@ -425,9 +432,14 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
     def _update_debug_marker(self):
         if not self.cfg.debug_marker:
             return
-        robot_root_pose_w = self._robot.data.root_state_w
-        robot_root_pose_w[:, 2] += 0.1
-        self.base_pose_visualizer.visualize(robot_root_pose_w[:, :3], robot_root_pose_w[:, 3:7])
+
+        self.base_pose_visualizer.visualize(self._robot.data.root_pos_w, self._robot.data.root_quat_w)
+
+        robot_yaw = math_utils.euler_xyz_from_quat(self._robot.data.root_quat_w)[2]
+        roll = torch.zeros_like(robot_yaw)
+        pitch = torch.zeros_like(robot_yaw) + self.target_body_pitch
+        quat_target = math_utils.quat_from_euler_xyz(roll, pitch, robot_yaw)
+        self.target_pose_visualizer.visualize(self._robot.data.root_pos_w[:, :3], quat_target)
 
         # get marker location
         # -- base state
