@@ -188,23 +188,22 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
     # self.curriculum.terrain_levels = None
 
     target_body_roll = 0.0  # degrees
-    target_body_pitch = 15.0  # degrees
+    target_body_pitch = 0.0  # degrees
 
     # Rewards
-    track_lin_vel_xy_reward_scale = 1.0
+    track_lin_vel_xy_reward_scale = 2.0
     track_ang_vel_z_exp_reward_scale = 1.0
     lin_vel_z_l2_reward_scale = -0.2
     ang_vel_xy_l2_reward_scale = -0.05
-    dof_torques_l2_reward_scale = -2.0e-6
-    dof_acc_l2_reward_scale = -1.0e-7
-    action_rate_l2_reward_scale = -0.005
-    feet_air_time_reward_scale = 1.0
+    dof_torques_l2_reward_scale = -5.0e-6
+    dof_acc_l2_reward_scale = -2.5e-7 * 1.5
+    action_rate_l2_reward_scale = -0.001 * 1.5
+    feet_air_time_reward_scale = 1.5
     feet_air_time_threshold = 0.6
-    flat_orientation_l2_reward_scale = -1.0
-    dof_pos_limits_reward_scale = -1.0
+    flat_orientation_l2_reward_scale = -2.5
+    dof_pos_limits_reward_scale = -2.0
     termination_reward_scale = -200.0
     feet_slide_reward_scale = -0.1
-    joint_deviation_hip_reward_scale = -0.1
-    joint_deviation_torso_reward_scale = -0.1
+    joint_deviation_hip_reward_scale = -0.5
+    joint_deviation_torso_reward_scale = -1.0
     orientation_torso_reward_scale = -5.0
-    
