@@ -16,9 +16,9 @@ import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
-from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG, RED_ARROW_X_MARKER_CFG
+from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, FRAME_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_from_angle_axis, quat_mul, quat_rotate, quat_rotate_inverse, yaw_quat
+from isaaclab.utils.math import quat_from_angle_axis, quat_mul, quat_rotate_inverse, yaw_quat
 
 from .velocity_nxp_env_cfg import VelocityNXPLowerBodyFlatEnvCfg
 
@@ -371,6 +371,8 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         if self.cfg.debug_marker:
+            import isaacsim.util.debug_draw._debug_draw as omni_debug_draw
+
             if not hasattr(self, "robot_visualizer"):
                 # -- base state
                 marker_cfg = FRAME_MARKER_CFG.copy()
@@ -394,6 +396,14 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
                 marker_cfg.prim_path = "/Visuals/Actions/velocity_current"
                 marker_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
                 self.base_vel_visualizer = VisualizationMarkers(marker_cfg)
+
+                # -- projected gravity
+                self.draw_line_interface = omni_debug_draw.acquire_debug_draw_interface()
+
+            # For Debug visualization
+            self._yellow_lines_colors = [[1.0, 1.0, 0.0, 1.0]] * self.num_envs
+            self._green_lines_colors = [[0.0, 1.0, 0.0, 1.0]] * self.num_envs
+            self._line_thicknesses = [5.0] * self.num_envs
 
             # set their visibility to true
             self.base_pose_visualizer.set_visibility(True)
@@ -457,6 +467,27 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
         # display markers
         self.base_vel_goal_visualizer.visualize(base_pos_w, vel_des_arrow_quat, vel_des_arrow_scale)
         self.base_vel_visualizer.visualize(base_pos_w, vel_arrow_quat, vel_arrow_scale)
+
+        # vector projection
+        self.draw_line_interface.clear_lines()
+
+        # -- projected gravity
+        projected_gravity_vector = self._robot.data.projected_gravity_b + self._robot.data.root_pos_w
+        # -- desired projected gravity
+        desired_projected_gravity_vector = self.desired_projected_gravity_b + self._robot.data.root_pos_w
+
+        self.draw_line_interface.draw_lines(
+            self._robot.data.root_pos_w.tolist(),
+            projected_gravity_vector.tolist(),
+            self._yellow_lines_colors,
+            self._line_thicknesses,
+        )
+        self.draw_line_interface.draw_lines(
+            self._robot.data.root_pos_w.tolist(),
+            desired_projected_gravity_vector.tolist(),
+            self._green_lines_colors,
+            self._line_thicknesses,
+        )
 
     def _resolve_xy_velocity_to_arrow(self, xy_velocity: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Converts the XY base velocity command to arrow direction rotation."""

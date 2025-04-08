@@ -108,8 +108,9 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
     state_space = 0
 
     # debug visualization
-    debug_vis = True
-    debug_marker = True
+    # TODO: debug_vis follow headless flag
+    debug_vis = False
+    debug_marker = False
 
     class camera_viewer:
         follow_camera = False
@@ -174,7 +175,7 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
         prim_path="/World/envs/env_.*/Robot/base_link",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
         attach_yaw_only=True,
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=(1.6, 1.0)),
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
         update_period=0.02,
