@@ -116,7 +116,7 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
 
         self.target_body_roll = np.radians(self.cfg.target_body_roll)
         self.target_body_pitch = np.radians(self.cfg.target_body_pitch)
-        self.desired_projected_gravity = torch.zeros(
+        self.desired_projected_gravity_b = torch.zeros(
             self.num_envs,
             3,
             dtype=torch.float,
@@ -261,10 +261,10 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
         )
 
         desired_base_quat = quat_mul(quat_roll, quat_pitch)
-        self.desired_projected_gravity = quat_rotate_inverse(desired_base_quat, self._robot.data.GRAVITY_VEC_W)
+        self.desired_projected_gravity_b = quat_rotate_inverse(desired_base_quat, self._robot.data.GRAVITY_VEC_W)
 
         orientation_torso = torch.sum(
-            torch.square(self._robot.data.projected_gravity_b[:, :2] - self.desired_projected_gravity[:, :2]),
+            torch.square(self._robot.data.projected_gravity_b[:, :2] - self.desired_projected_gravity_b[:, :2]),
             dim=1,
         )
 
@@ -317,7 +317,11 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
 
         # Sample new commands
         self._update_command_metrics()
-        self._commands[env_ids] = torch.zeros_like(self._commands[env_ids]).uniform_(-1.0, 1.0)
+        # self._commands[env_ids] = torch.zeros_like(self._commands[env_ids]).uniform_(-1.0, 1.0)
+
+        self._commands[env_ids, 0] = torch.zeros_like(self._commands[env_ids, 0]).uniform_(-0.5, 1.0)
+        self._commands[env_ids, 1] = torch.zeros_like(self._commands[env_ids, 1]).uniform_(-0.5, 0.5)
+        self._commands[env_ids, 2] = torch.zeros_like(self._commands[env_ids, 2]).uniform_(-1.0, 1.0)
 
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
