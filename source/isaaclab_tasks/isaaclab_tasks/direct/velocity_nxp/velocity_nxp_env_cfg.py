@@ -49,7 +49,6 @@ class EventCfg:
             "operation": "add",
         },
     )
-    add_base_mass = None
 
     # reset
     base_external_force_torque = EventTerm(
@@ -94,7 +93,6 @@ class EventCfg:
         interval_range_s=(10.0, 15.0),
         params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
     )
-    push_robot = None
 
 
 @configclass
@@ -158,7 +156,7 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2.5, replicate_physics=True)
 
     # events
-    # events: EventCfg = EventCfg()
+    events: EventCfg = EventCfg()
 
     # robot
     robot: ArticulationCfg = NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG.replace(prim_path="/World/envs/env_.*/Robot")

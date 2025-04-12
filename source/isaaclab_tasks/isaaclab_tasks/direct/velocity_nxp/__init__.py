@@ -16,7 +16,7 @@ from . import agents
 ##
 
 gym.register(
-    id="Isaac-Velocity-NXP-Lower-Body-Direct-v0",
+    id="Isaac-Velocity-Flat-NXP-Lower-Body-Direct-v0",
     entry_point=f"{__name__}.velocity_nxp_env:VelocityNXPLowerBodyFlatEnv",
     disable_env_checker=True,
     kwargs={
