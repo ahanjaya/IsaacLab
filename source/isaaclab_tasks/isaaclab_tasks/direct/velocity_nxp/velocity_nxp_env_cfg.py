@@ -20,6 +20,7 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg
+from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG
 from isaaclab.utils import configclass
 
 
@@ -160,7 +161,6 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
 
     # robot
     robot: ArticulationCfg = NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    # self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
 
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="/World/envs/env_.*/Robot/.*",
@@ -169,22 +169,8 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
         track_air_time=True,
     )
 
-    height_scanner = RayCasterCfg(
-        prim_path="/World/envs/env_.*/Robot/base_link",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
-        attach_yaw_only=True,
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=(1.6, 1.0)),
-        debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
-        update_period=0.02,
-    )
-
     # no height scan
     height_scanner = None
-    # self.observations.policy.height_scan = None
-
-    # no terrain curriculum
-    # self.curriculum.terrain_levels = None
 
     target_body_roll = 0.0  # degrees
     target_body_pitch = 0.0  # degrees
@@ -198,11 +184,50 @@ class VelocityNXPLowerBodyFlatEnvCfg(DirectRLEnvCfg):
     dof_acc_l2_reward_scale = -2.5e-7 * 1.5
     action_rate_l2_reward_scale = -0.001 * 1.5
     feet_air_time_reward_scale = 1.5
-    feet_air_time_threshold = 0.6
+    feet_air_time_threshold = 0.4
     flat_orientation_l2_reward_scale = -2.5
     dof_pos_limits_reward_scale = -2.0
     termination_reward_scale = -200.0
     feet_slide_reward_scale = -0.1
     joint_deviation_hip_reward_scale = -0.5
     joint_deviation_torso_reward_scale = -1.0
-    orientation_torso_reward_scale = -5.0
+    orientation_torso_reward_scale = -10.0
+
+
+@configclass
+class VelocityNXPLowerBodyRoughEnvCfg(VelocityNXPLowerBodyFlatEnvCfg):
+    # env
+    observation_space = 238
+
+    terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
+        terrain_type="generator",
+        terrain_generator=ROUGH_TERRAINS_CFG,
+        max_init_terrain_level=9,
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
+        visual_material=sim_utils.MdlFileCfg(
+            mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
+            project_uvw=True,
+        ),
+        debug_vis=False,
+    )
+
+    # we add a height scanner for perceptive locomotion
+    height_scanner = RayCasterCfg(
+        prim_path="/World/envs/env_.*/Robot/torso_link",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        attach_yaw_only=True,
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=(1.6, 1.0)),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
+
+    # self.observations.policy.height_scan = None
+    # no terrain curriculum
+    # self.curriculum.terrain_levels = None

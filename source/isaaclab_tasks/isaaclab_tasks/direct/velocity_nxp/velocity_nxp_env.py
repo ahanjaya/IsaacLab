@@ -17,16 +17,21 @@ from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, FRAME_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
-from isaaclab.sensors import ContactSensor
+from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.utils.math import quat_from_angle_axis, quat_mul, quat_rotate_inverse, yaw_quat
 
-from .velocity_nxp_env_cfg import VelocityNXPLowerBodyFlatEnvCfg
+from .velocity_nxp_env_cfg import VelocityNXPLowerBodyFlatEnvCfg, VelocityNXPLowerBodyRoughEnvCfg
 
 
 class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
-    cfg: VelocityNXPLowerBodyFlatEnvCfg
+    cfg: VelocityNXPLowerBodyFlatEnvCfg | VelocityNXPLowerBodyRoughEnvCfg
 
-    def __init__(self, cfg: VelocityNXPLowerBodyFlatEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(
+        self,
+        cfg: VelocityNXPLowerBodyFlatEnvCfg | VelocityNXPLowerBodyRoughEnvCfg,
+        render_mode: str | None = None,
+        **kwargs,
+    ):
         super().__init__(cfg, render_mode, **kwargs)
 
         # Joint position command (deviation from default joint positions)
@@ -93,6 +98,10 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
         self.scene.articulations["robot"] = self._robot
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
         self.scene.sensors["contact_sensor"] = self._contact_sensor
+        if isinstance(self.cfg, VelocityNXPLowerBodyRoughEnvCfg):
+            # we add a height scanner for perceptive locomotion
+            self._height_scanner = RayCaster(self.cfg.height_scanner)
+            self.scene.sensors["height_scanner"] = self._height_scanner
         self.cfg.terrain.num_envs = self.scene.cfg.num_envs
         self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
         self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
@@ -133,6 +142,10 @@ class VelocityNXPLowerBodyFlatEnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         self._previous_actions = self._actions.clone()
         height_data = None
+        if isinstance(self.cfg, VelocityNXPLowerBodyRoughEnvCfg):
+            height_data = (
+                self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.5
+            ).clip(-1.0, 1.0)
         obs = torch.cat(
             [
                 tensor
