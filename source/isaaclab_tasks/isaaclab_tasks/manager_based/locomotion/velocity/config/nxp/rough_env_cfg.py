@@ -30,12 +30,13 @@ class NXPRewards(RewardsCfg):
         func=mdp.track_ang_vel_z_world_exp, weight=2.0, params={"command_name": "base_velocity", "std": 0.5}
     )
     feet_air_time = RewTerm(
-        func=mdp.feet_air_time_positive_biped,
-        weight=0.25,
+        func=mdp.feet_air_time_berkeley,
+        weight=2.0,
         params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*ankle_roll_link"),
             "command_name": "base_velocity",
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
-            "threshold": 0.4,
+            "threshold_min": 0.2,
+            "threshold_max": 0.5,
         },
     )
     feet_slide = RewTerm(
@@ -58,6 +59,11 @@ class NXPRewards(RewardsCfg):
         func=mdp.joint_deviation_l1,
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*"])},
+    )
+    joint_deviation_knee = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_knee_.*"])},
     )
     joint_deviation_torso = RewTerm(
         func=mdp.joint_deviation_l1,
@@ -96,7 +102,6 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = 0.0
-        self.rewards.undesired_contacts = None
         self.rewards.flat_orientation_l2.weight = -1.0
         self.rewards.action_rate_l2.weight = -0.005
         self.rewards.dof_acc_l2.weight = -1.25e-7

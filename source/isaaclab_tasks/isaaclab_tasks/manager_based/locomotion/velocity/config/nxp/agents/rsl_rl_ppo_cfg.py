@@ -12,7 +12,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 class NXPRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 3000
-    save_interval = 50
+    save_interval = 500
     experiment_name = "nxp_rough"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
