@@ -148,26 +148,26 @@ NXP_LOWER_BODY_WITH_TORSO_CFG = ArticulationCfg(
         ),
         "hip": DCMotorCfg(
             joint_names_expr=[".*_hip_.*"],
-            effort_limit=88.0,
-            saturation_effort=88.0,
+            effort_limit=33.5,  # 88.0
+            saturation_effort=33.5,  # 88.0
             velocity_limit=21.0,
-            stiffness=88.0,
-            damping=5.0,
+            stiffness=25.0,  # 88.0
+            damping=0.5,  # 5.0
             armature=0.01,
             friction=0.0,
         ),
         "knee": DCMotorCfg(
-            joint_names_expr=[".*_knee_joint"],
-            effort_limit=139.0,
-            saturation_effort=139.0,
+            joint_names_expr=[".*_knee_.*"],
+            effort_limit=33.5 * 2,  # 139.0
+            saturation_effort=33.5 * 2,  # 139.0
             velocity_limit=21.0,
-            stiffness=139.0,
-            damping=5.0,
+            stiffness=25.0,  # 139.0
+            damping=0.5,  # 5.0
             armature=0.01,
             friction=0.0,
         ),
         "ankle": DCMotorCfg(
-            joint_names_expr=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"],
+            joint_names_expr=[".*_ankle_.*"],
             effort_limit=33.5,
             saturation_effort=33.5,
             velocity_limit=21.0,
