@@ -17,16 +17,46 @@ class NXPFlatEnvCfg(NXPRoughEnvCfg):
         # change terrain to flat
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
+
         # no height scan
         self.scene.height_scanner = None
         self.observations.policy.height_scan = None
+
         # no terrain curriculum
         self.curriculum.terrain_levels = None
 
+        # Randomization
+        self.events.add_base_mass.params["mass_distribution_params"] = (-3.0, 3.0)
+        self.events.reset_base.params = {
+            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+            "velocity_range": {
+                "x": (-0.1, 0.1),
+                "y": (-0.1, 0.1),
+                "z": (-0.1, 0.1),
+                "roll": (-0.1, 0.1),
+                "pitch": (-0.1, 0.1),
+                "yaw": (-0.1, 0.1),
+            },
+        }
+        self.events.push_robot.params["velocity_range"] = {
+            "x": (-0.5, 0.5),
+            "y": (-0.5, 0.5),
+            "z": (-0.5, 0.5),
+            "roll": (-0.5, 0.5),
+            "pitch": (-0.5, 0.5),
+            "yaw": (-0.5, 0.5),
+        }
+
         # Rewards
+        self.rewards.lin_vel_z_l2.weight = -2.0
         self.rewards.dof_torques_l2.weight = -2.5e-5
         self.rewards.feet_air_time.weight = 0.5
         self.rewards.flat_orientation_l2.weight = -5.0
+
+        # Commands
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
+        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
 
 class NXPFlatEnvCfg_PLAY(NXPFlatEnvCfg):
