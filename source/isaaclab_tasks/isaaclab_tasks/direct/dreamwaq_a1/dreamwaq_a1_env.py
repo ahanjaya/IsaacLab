@@ -127,18 +127,27 @@ class DreamWaQA1Env(DirectRLEnv):
         self._previous_two_actions = self._previous_actions.clone()
         self._previous_actions = self._actions.clone()
         height_data = None
-        commands_scale = torch.tensor([2.0, 2.0, 0.25], device=self.device, requires_grad=False)
+        commands_scale = torch.tensor(
+            [
+                self.cfg.normalization.obs_scales.lin_vel,
+                self.cfg.normalization.obs_scales.lin_vel,
+                self.cfg.normalization.obs_scales.ang_vel,
+            ],
+            device=self.device,
+            requires_grad=False,
+        )
 
         obs = torch.cat(
             [
                 tensor
                 for tensor in (
-                    self._robot.data.root_lin_vel_b * 2.0,
-                    self._robot.data.root_ang_vel_b * 0.25,
+                    self._robot.data.root_lin_vel_b * self.cfg.normalization.obs_scales.lin_vel,
+                    self._robot.data.root_ang_vel_b * self.cfg.normalization.obs_scales.ang_vel,
                     self._robot.data.projected_gravity_b,
                     self._commands * commands_scale,
-                    (self._robot.data.joint_pos - self._robot.data.default_joint_pos) * 1.0,
-                    self._robot.data.joint_vel * 0.05,
+                    (self._robot.data.joint_pos - self._robot.data.default_joint_pos)
+                    * self.cfg.normalization.obs_scales.dof_pos,
+                    self._robot.data.joint_vel * self.cfg.normalization.obs_scales.dof_vel,
                     height_data,
                     self._actions,
                 )
@@ -146,17 +155,19 @@ class DreamWaQA1Env(DirectRLEnv):
             ],
             dim=-1,
         )
+        # TODO: in IsaacGym we add clip obs_buf here
+
         observations = {"policy": obs}
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
         # linear velocity tracking
         lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
-        lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
+        lin_vel_error_mapped = torch.exp(-lin_vel_error / self.cfg.rewards.tracking_sigma)
 
         # yaw rate tracking
         yaw_rate_error = torch.square(self._commands[:, 2] - self._robot.data.root_ang_vel_b[:, 2])
-        yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
+        yaw_rate_error_mapped = torch.exp(-yaw_rate_error / self.cfg.rewards.tracking_sigma)
 
         # z velocity tracking
         z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
@@ -176,9 +187,9 @@ class DreamWaQA1Env(DirectRLEnv):
         )
 
         # base height
-        # TODO: Parametrize this height target and actual height based on the grid scan
+        # TODO: Refactor actual height based on mean of grid scan under robot
         base_height = self._robot.data.root_pos_w[:, 2]  # - torch.mean(self.measured_heights_under_robot, dim=1)
-        base_height_error = torch.square(base_height - 0.28)
+        base_height_error = torch.square(base_height - self.cfg.rewards.base_height_target)
 
         # feet air time
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self._feet_ids]
@@ -223,7 +234,10 @@ class DreamWaQA1Env(DirectRLEnv):
 
         # joint torque limits
         joint_torque_limits_err = torch.sum(
-            (torch.abs(self._robot.data.applied_torque) - self._robot.data.joint_effort_limits * 0.85).clip(min=0.0),
+            (
+                torch.abs(self._robot.data.applied_torque)
+                - self._robot.data.joint_effort_limits * self.cfg.rewards.soft_torque_limit_percentage
+            ).clip(min=0.0),
             dim=1,
         )
 
@@ -251,27 +265,29 @@ class DreamWaQA1Env(DirectRLEnv):
         contacts = torch.sum(is_contact, dim=1)
 
         rewards = {
-            "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
-            "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
-            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
-            "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
-            "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
-            "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
-            "dof_power_l2": joint_power * self.cfg.joint_power_reward_scale * self.step_dt,
-            "base_height": base_height_error * self.cfg.base_height_reward_scale * self.step_dt,
-            "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
+            "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.rewards.scales.lin_vel * self.step_dt,
+            "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.rewards.scales.yaw_rate * self.step_dt,
+            "lin_vel_z_l2": z_vel_error * self.cfg.rewards.scales.z_vel * self.step_dt,
+            "ang_vel_xy_l2": ang_vel_error * self.cfg.rewards.scales.ang_vel * self.step_dt,
+            "flat_orientation_l2": flat_orientation * self.cfg.rewards.scales.flat_orientation * self.step_dt,
+            "dof_acc_l2": joint_accel * self.cfg.rewards.scales.joint_accel * self.step_dt,
+            "dof_power_l2": joint_power * self.cfg.rewards.scales.joint_power * self.step_dt,
+            "base_height": base_height_error * self.cfg.rewards.scales.base_height * self.step_dt,
+            "feet_air_time": air_time * self.cfg.rewards.scales.feet_air_time * self.step_dt,
             # "feet_clearance": feet_clearance * self.cfg.feet_clearance_reward_scale * self.step_dt,
-            "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
-            "smoothness_l2": smoothness * self.cfg.smoothness_reward_scale * self.step_dt,
-            "power_distribution": power_distribution * self.cfg.power_distribution_reward_scale * self.step_dt,
-            "hip_pos_l2": hip_pos_err * self.cfg.hip_pos_reward_scale * self.step_dt,
-            "dof_err_l2": joint_err * self.cfg.joint_err_reward_scale * self.step_dt,
-            "dof_pos_limits_l2": joint_pos_limits_err * self.cfg.joint_pos_limits_reward_scale * self.step_dt,
-            "dof_torque_limits_l2": joint_torque_limits_err * self.cfg.joint_torque_limits_reward_scale * self.step_dt,
-            "foot_ground": foot_not_on_ground * self.cfg.foot_ground_reward_scale * self.step_dt,
-            "termination": termination * self.cfg.termination_reward_scale * self.step_dt,
-            "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
-            "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
+            "action_rate_l2": action_rate * self.cfg.rewards.scales.action_rate * self.step_dt,
+            "smoothness_l2": smoothness * self.cfg.rewards.scales.smoothness * self.step_dt,
+            "power_distribution": power_distribution * self.cfg.rewards.scales.power_distribution * self.step_dt,
+            "hip_pos_l2": hip_pos_err * self.cfg.rewards.scales.hip_pos * self.step_dt,
+            "dof_err_l2": joint_err * self.cfg.rewards.scales.joint_err * self.step_dt,
+            "dof_pos_limits_l2": joint_pos_limits_err * self.cfg.rewards.scales.joint_pos_limits * self.step_dt,
+            "dof_torque_limits_l2": (
+                joint_torque_limits_err * self.cfg.rewards.scales.joint_torque_limits * self.step_dt
+            ),
+            "foot_ground": foot_not_on_ground * self.cfg.rewards.scales.foot_ground * self.step_dt,
+            "termination": termination * self.cfg.rewards.scales.termination * self.step_dt,
+            "dof_torques_l2": joint_torques * self.cfg.rewards.scales.joint_torque * self.step_dt,
+            "undesired_contacts": contacts * self.cfg.rewards.scales.undesired_contact * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging

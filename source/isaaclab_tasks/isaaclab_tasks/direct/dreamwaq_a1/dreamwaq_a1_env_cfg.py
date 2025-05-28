@@ -80,25 +80,37 @@ class DreamWaQA1FlatEnvCfg(DirectRLEnvCfg):
         prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
     )
 
-    # reward scales
-    lin_vel_reward_scale = 1.0
-    yaw_rate_reward_scale = 0.5
-    z_vel_reward_scale = -2.0
-    ang_vel_reward_scale = -0.05
-    flat_orientation_reward_scale = -5.0
-    joint_accel_reward_scale = -2.5e-7
-    joint_power_reward_scale = -2.0e-5
-    base_height_reward_scale = -1.0
-    feet_air_time_reward_scale = 1.0
-    feet_clearance_reward_scale = -0.01
-    action_rate_reward_scale = -0.001
-    smoothness_reward_scale = -0.001
-    power_distribution_reward_scale = -1.0e-5
-    hip_pos_reward_scale = -0.5
-    joint_err_reward_scale = -0.05
-    joint_pos_limits_reward_scale = -10.0
-    joint_torque_limits_reward_scale = -1.0
-    foot_ground_reward_scale = -1.0
-    termination_reward_scale = -1.0
-    joint_torque_reward_scale = -2.5e-5
-    undesired_contact_reward_scale = -1.0
+    class normalization:
+        class obs_scales:
+            lin_vel = 2.0
+            ang_vel = 0.25
+            dof_pos = 1.0
+            dof_vel = 0.05
+
+    class rewards:
+        class scales:
+            lin_vel = 1.0
+            yaw_rate = 0.5
+            z_vel = -2.0
+            ang_vel = -0.05
+            flat_orientation = -5.0
+            joint_accel = -2.5e-7
+            joint_power = -2.0e-5
+            base_height = -1.0
+            feet_air_time = 1.0
+            feet_clearance = -0.01
+            action_rate = -0.001
+            smoothness = -0.001
+            power_distribution = -1.0e-5
+            hip_pos = -0.5
+            joint_err = -0.05
+            joint_pos_limits = -10.0
+            joint_torque_limits = -1.0
+            foot_ground = -1.0
+            termination = -1.0
+            joint_torque = -2.5e-5
+            undesired_contact = -1.0
+
+        base_height_target = 0.28
+        tracking_sigma = 0.25
+        soft_torque_limit_percentage = 0.85
