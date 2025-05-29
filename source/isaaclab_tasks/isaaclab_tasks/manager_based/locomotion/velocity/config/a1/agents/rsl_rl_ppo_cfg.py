@@ -12,7 +12,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 class UnitreeA1RoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 1500
-    save_interval = 50
+    save_interval = 500
     experiment_name = "unitree_a1_rough"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
@@ -42,7 +42,7 @@ class UnitreeA1FlatPPORunnerCfg(UnitreeA1RoughPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.max_iterations = 300
+        self.max_iterations = 1500
         self.experiment_name = "unitree_a1_flat"
         self.policy.actor_hidden_dims = [128, 128, 128]
         self.policy.critic_hidden_dims = [128, 128, 128]

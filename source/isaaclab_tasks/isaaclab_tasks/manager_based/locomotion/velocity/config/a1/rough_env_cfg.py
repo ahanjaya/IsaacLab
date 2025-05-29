@@ -33,6 +33,7 @@ class UnitreeA1RoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.push_robot = None
         self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 3.0)
         self.events.add_base_mass.params["asset_cfg"].body_names = "trunk"
+        self.events.base_com.params["asset_cfg"].body_names = "trunk"
         self.events.base_external_force_torque.params["asset_cfg"].body_names = "trunk"
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.reset_base.params = {
