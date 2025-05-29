@@ -10,7 +10,6 @@ from __future__ import annotations
 ##
 from isaaclab_assets.robots.unitree import UNITREE_A1_CFG
 
-import isaaclab.envs.mdp as mdp
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
@@ -21,6 +20,9 @@ from isaaclab.sensors import ContactSensorCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import GaussianNoiseCfg, NoiseModelWithAdditiveBiasCfg
+
+import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 
 
 @configclass
@@ -164,7 +166,10 @@ class DreamWaQA1FlatEnvCfg(DirectRLEnvCfg):
     # robot
     robot: ArticulationCfg = UNITREE_A1_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
+        prim_path="/World/envs/env_.*/Robot/.*",
+        history_length=3,
+        update_period=0.005,
+        track_air_time=True,
     )
 
     class normalization:
@@ -201,3 +206,14 @@ class DreamWaQA1FlatEnvCfg(DirectRLEnvCfg):
         base_height_target = 0.28
         tracking_sigma = 0.25
         soft_torque_limit_percentage = 0.85
+
+    # at every time-step add gaussian noise + bias. The bias is a gaussian sampled at reset
+    action_noise_model: NoiseModelWithAdditiveBiasCfg = NoiseModelWithAdditiveBiasCfg(
+        noise_cfg=GaussianNoiseCfg(mean=0.0, std=0.05, operation="add"),
+        bias_noise_cfg=GaussianNoiseCfg(mean=0.0, std=0.015, operation="abs"),
+    )
+    # at every time-step add gaussian noise + bias. The bias is a gaussian sampled at reset
+    observation_noise_model: NoiseModelWithAdditiveBiasCfg = NoiseModelWithAdditiveBiasCfg(
+        noise_cfg=GaussianNoiseCfg(mean=0.0, std=0.002, operation="add"),
+        bias_noise_cfg=GaussianNoiseCfg(mean=0.0, std=0.0001, operation="abs"),
+    )

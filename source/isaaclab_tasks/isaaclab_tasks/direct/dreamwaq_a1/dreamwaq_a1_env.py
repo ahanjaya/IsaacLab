@@ -344,16 +344,18 @@ class DreamWaQA1Env(DirectRLEnv):
             self._episode_sums[key][env_ids] = 0.0
         self.extras["log"] = dict()
         self.extras["log"].update(extras)
+
+        # Episode termination logging
         extras = dict()
         extras["Episode_Termination/base_contact"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
         extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
+        self.extras["log"].update(extras)
 
         # Command logging
         extras = dict()
         for key in self._metric_sums.keys():
             extras["Metrics/base_velocity/" + key] = self._metric_sums[key][env_ids]
             self._metric_sums[key][env_ids] = 0.0
-
         self.extras["log"].update(extras)
 
     def _update_command_metrics(self):
