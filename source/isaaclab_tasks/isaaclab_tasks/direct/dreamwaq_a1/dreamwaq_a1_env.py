@@ -69,6 +69,15 @@ class DreamWaQA1Env(DirectRLEnv):
                 "undesired_contacts",
             ]
         }
+
+        self._metric_sums = {
+            key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+            for key in [
+                "error_vel_xy",
+                "error_vel_yaw",
+            ]
+        }
+
         # Get specific body indices
         self._base_id, _ = self._contact_sensor.find_bodies("trunk")
         self._feet_ids, _ = self._contact_sensor.find_bodies(".*_foot")
@@ -306,14 +315,18 @@ class DreamWaQA1Env(DirectRLEnv):
             env_ids = self._robot._ALL_INDICES
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
+
         if len(env_ids) == self.num_envs:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
         self._actions[env_ids] = 0.0
         self._previous_actions[env_ids] = 0.0
         self._previous_two_actions[env_ids] = 0.0
+
         # Sample new commands
+        self._update_command_metrics()
         self._commands[env_ids] = torch.zeros_like(self._commands[env_ids]).uniform_(-1.0, 1.0)
+
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
@@ -322,6 +335,7 @@ class DreamWaQA1Env(DirectRLEnv):
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+
         # Logging
         extras = dict()
         for key in self._episode_sums.keys():
@@ -333,7 +347,27 @@ class DreamWaQA1Env(DirectRLEnv):
         extras = dict()
         extras["Episode_Termination/base_contact"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
         extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
+
+        # Command logging
+        extras = dict()
+        for key in self._metric_sums.keys():
+            extras["Metrics/base_velocity/" + key] = self._metric_sums[key][env_ids]
+            self._metric_sums[key][env_ids] = 0.0
+
         self.extras["log"].update(extras)
+
+    def _update_command_metrics(self):
+        # time for which the command was executed
+        max_command_time = self.max_episode_length_s
+        max_command_step = max_command_time / self.step_dt
+
+        # logs data
+        self._metric_sums["error_vel_xy"] += (
+            torch.norm(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2], dim=-1) / max_command_step
+        )
+        self._metric_sums["error_vel_yaw"] += (
+            torch.abs(self._commands[:, 2] - self._robot.data.root_ang_vel_b[:, 2]) / max_command_step
+        )
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         if self.cfg.debug_marker:
