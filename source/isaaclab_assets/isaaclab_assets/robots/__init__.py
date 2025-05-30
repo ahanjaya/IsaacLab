@@ -12,8 +12,8 @@ from .ant import *
 from .anymal import *
 from .cart_double_pendulum import *
 from .cartpole import *
-from .fourier import *
 from .erc import *
+from .fourier import *
 from .franka import *
 from .humanoid import *
 from .humanoid_28 import *

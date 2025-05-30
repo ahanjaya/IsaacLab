@@ -13,7 +13,7 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 ##
 # Pre-defined configs
 ##
-from isaaclab_assets import NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG  # isort: skip
+from isaaclab_assets import NXP_HUMANOID_MINIMAL_CFG  # isort: skip
 
 
 @configclass
@@ -70,6 +70,11 @@ class NXPRewards(RewardsCfg):
         weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_yaw_joint")},
     )
+    joint_deviation_arms = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*"])},
+    )
 
 
 @configclass
@@ -80,7 +85,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # post init of parent
         super().__post_init__()
         # Scene
-        self.scene.robot = NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = NXP_HUMANOID_MINIMAL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
 
         # Randomization
@@ -94,6 +99,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         }
         self.events.add_base_mass.params["asset_cfg"].body_names = ["torso_link"]
         self.events.add_base_mass.params["mass_distribution_params"] = (-0.0, 0.0)
+        self.events.base_com.params["asset_cfg"].body_names = ["torso_link"]
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.base_external_force_torque.params["asset_cfg"].body_names = ["torso_link"]
         self.events.reset_base.params = {
@@ -127,6 +133,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_deviation_hip.weight = -0.1
         self.rewards.joint_deviation_knee.weight = -0.01
         self.rewards.joint_deviation_torso.weight = -1.0
+        self.rewards.joint_deviation_arms.weight = -0.1
         self.rewards.flat_orientation_l2.weight = -5.0
 
         # Commands
