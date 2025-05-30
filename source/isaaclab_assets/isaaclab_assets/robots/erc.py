@@ -185,3 +185,110 @@ NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG.spawn.usd_path = os.path.join(
     NXP_DIR,
     "nxp_lower_body_with_torso_minimal/nxp_lower_body_with_torso_minimal.usd",
 )
+
+NXP_HUMANOID_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=os.path.join(
+            os.getcwd(),
+            NXP_DIR,
+            "nxp_humanoid/nxp_humanoid.usd",
+        ),
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=4,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.85),
+        joint_pos={
+            "left_hip_pitch_joint": 0.52,  # 30 degrees
+            "right_hip_pitch_joint": -0.52,  # -30 degrees
+            "left_hip_roll_joint": -0.05,  # -3 degrees
+            "right_hip_roll_joint": 0.05,  # 3 degrees
+            "left_hip_yaw_joint": -0.35,  # -20 degrees
+            "right_hip_yaw_joint": 0.35,  # 20 degrees
+            ".*_knee_joint": 0.79,  # 45 degrees
+            ".*_ankle_pitch_joint": -0.44,  # -25 degrees
+            ".*_ankle_roll_joint": 0.0,  # 0 degrees
+            "torso_yaw_joint": 0.0,  # 0 degrees
+            ".*_shoulder_pitch_joint": 0.0,  # 0 degrees
+            "left_shoulder_roll_joint": 0.13,  # 7.5 degrees
+            "right_shoulder_roll_joint": -0.13,  # -7.5 degrees
+            "left_shoulder_yaw_joint": -0.13,  # -7.5 degrees
+            "right_shoulder_yaw_joint": 0.13,  # 7.5 degrees
+            ".*_elbow_joint": -0.52,  # -30 degrees
+        },
+        joint_vel={".*": 0.0},
+    ),
+    soft_joint_pos_limit_factor=0.9,
+    actuators={
+        "torso": DCMotorCfg(
+            joint_names_expr=["torso_yaw_joint"],
+            effort_limit=33.5,
+            saturation_effort=33.5,
+            velocity_limit=21.0,
+            stiffness=25.0,
+            damping=0.5,
+            armature=0.01,
+            friction=0.0,
+        ),
+        "hip": DCMotorCfg(
+            joint_names_expr=[".*_hip_.*"],
+            effort_limit=33.5,  # 88.0
+            saturation_effort=33.5,  # 88.0
+            velocity_limit=21.0,
+            stiffness=25.0,  # 88.0
+            damping=0.5,  # 5.0
+            armature=0.01,
+            friction=0.0,
+        ),
+        "knee": DCMotorCfg(
+            joint_names_expr=[".*_knee_.*"],
+            effort_limit=33.5 * 2,  # 139.0
+            saturation_effort=33.5 * 2,  # 139.0
+            velocity_limit=21.0,
+            stiffness=25.0,  # 139.0
+            damping=0.5,  # 5.0
+            armature=0.01,
+            friction=0.0,
+        ),
+        "ankle": DCMotorCfg(
+            joint_names_expr=[".*_ankle_.*"],
+            effort_limit=33.5,
+            saturation_effort=33.5,
+            velocity_limit=21.0,
+            stiffness=25.0,
+            damping=0.5,
+            armature=0.01,
+            friction=0.0,
+        ),
+        "arm": DCMotorCfg(
+            joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
+            effort_limit=33.5,
+            saturation_effort=33.5,
+            velocity_limit=21.0,
+            stiffness=25.0,
+            damping=0.5,
+            armature=0.01,
+            friction=0.0,
+        ),
+    },
+)
+
+NXP_HUMANOID_MINIMAL_CFG = NXP_HUMANOID_CFG.copy()
+NXP_HUMANOID_MINIMAL_CFG.spawn.usd_path = os.path.join(
+    os.getcwd(),
+    NXP_DIR,
+    "nxp_humanoid_minimal/nxp_humanoid_minimal.usd",
+)
