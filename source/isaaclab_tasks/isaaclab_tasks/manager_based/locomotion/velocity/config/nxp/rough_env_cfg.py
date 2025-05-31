@@ -128,7 +128,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.feet_slide.weight = -0.25
         self.rewards.undesired_contacts.weight = -1.0
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
-            "contact_forces", body_names=".*_hip_yaw_link"
+            "contact_forces", body_names=[".*_hip_yaw_link", "torso_link", ".*_shoulder_link"]
         )
         self.rewards.joint_deviation_hip.weight = -0.1
         self.rewards.joint_deviation_knee.weight = -0.01
