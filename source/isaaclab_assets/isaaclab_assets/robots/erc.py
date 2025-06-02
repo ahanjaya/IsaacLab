@@ -186,6 +186,31 @@ NXP_LOWER_BODY_WITH_TORSO_MINIMAL_CFG.spawn.usd_path = os.path.join(
     "nxp_lower_body_with_torso_minimal/nxp_lower_body_with_torso_minimal.usd",
 )
 
+# NXP Lower Body with Torso - OnShape
+NXP_LOWER_BODY_WITH_TORSO_MINIMAL_ONSHAPE_CFG = NXP_LOWER_BODY_WITH_TORSO_CFG.copy()
+NXP_LOWER_BODY_WITH_TORSO_MINIMAL_ONSHAPE_CFG.spawn.usd_path = os.path.join(
+    os.getcwd(),
+    NXP_DIR,
+    "nxp_lower_body_w_torso_onshape/nxp_lower_body_w_torso_edit.usd",
+)
+NXP_LOWER_BODY_WITH_TORSO_MINIMAL_ONSHAPE_CFG.init_state.joint_pos = {
+    "left_hip_pitch_joint": -0.52,  # 30 degrees
+    "right_hip_pitch_joint": 0.52,  # -30 degrees
+    "left_hip_roll_joint": -0.05,  # -3 degrees
+    "right_hip_roll_joint": 0.05,  # 3 degrees
+    "left_hip_yaw_joint": 0.35,  # 20 degrees
+    "right_hip_yaw_joint": -0.35,  # 20 degrees
+    "left_knee_joint": 0.79,  # 45 degrees
+    "right_knee_joint": -0.79,  # -45 degrees
+    "left_ankle_pitch_joint": 0.44,  # 25 degrees
+    "right_ankle_pitch_joint": -0.44,  # -25 degrees
+    "left_ankle_roll_joint": 0.0,  # 0 degrees
+    "right_ankle_roll_joint": 0.0,  # 0 degrees
+    "torso_yaw_joint": 0.0,  # 0 degrees
+}
+
+
+# NXP Humanoid Robot Full Size Configuration
 NXP_HUMANOID_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=os.path.join(
