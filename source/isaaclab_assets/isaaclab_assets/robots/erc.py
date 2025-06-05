@@ -253,6 +253,7 @@ NXP_HUMANOID_CFG = ArticulationCfg(
             "left_shoulder_yaw_joint": -0.13,  # -7.5 degrees
             "right_shoulder_yaw_joint": 0.13,  # 7.5 degrees
             ".*_elbow_joint": -0.52,  # -30 degrees
+            "head_.*": 0.0,  # 0 degrees
         },
         joint_vel={".*": 0.0},
     ),
@@ -300,6 +301,16 @@ NXP_HUMANOID_CFG = ArticulationCfg(
         ),
         "arm": DCMotorCfg(
             joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
+            effort_limit=33.5,
+            saturation_effort=33.5,
+            velocity_limit=21.0,
+            stiffness=25.0,
+            damping=0.5,
+            armature=0.01,
+            friction=0.0,
+        ),
+        "head": DCMotorCfg(
+            joint_names_expr=["head_.*"],
             effort_limit=33.5,
             saturation_effort=33.5,
             velocity_limit=21.0,

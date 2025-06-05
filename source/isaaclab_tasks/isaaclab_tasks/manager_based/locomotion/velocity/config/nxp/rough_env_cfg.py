@@ -75,6 +75,11 @@ class NXPRewards(RewardsCfg):
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*"])},
     )
+    joint_deviation_head = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["head_.*"])},
+    )
 
 
 @configclass
@@ -134,6 +139,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_deviation_knee.weight = -0.01
         self.rewards.joint_deviation_torso.weight = -1.0
         self.rewards.joint_deviation_arms.weight = -0.1
+        self.rewards.joint_deviation_head.weight = -1.0
         self.rewards.flat_orientation_l2.weight = -5.0
 
         # Commands
