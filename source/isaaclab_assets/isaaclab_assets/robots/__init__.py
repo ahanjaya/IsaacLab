@@ -20,6 +20,7 @@ from .franka import *
 from .galbot import *
 from .humanoid import *
 from .humanoid_28 import *
+from .inventec import *
 from .kinova import *
 from .kuka_allegro import *
 from .pick_and_place import *
