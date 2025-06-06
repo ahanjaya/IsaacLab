@@ -8,12 +8,52 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg, RewardsCfg
+from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
+    ActionsCfg,
+    LocomotionVelocityRoughEnvCfg,
+    RewardsCfg,
+)
 
 ##
 # Pre-defined configs
 ##
 from isaaclab_assets import NXP_HUMANOID_MINIMAL_CFG  # isort: skip
+
+
+@configclass
+class NXPActions(ActionsCfg):
+    """Action specifications for the MDP."""
+
+    joint_pos = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
+            "left_hip_pitch_joint",
+            "right_hip_pitch_joint",
+            "left_hip_roll_joint",
+            "right_hip_roll_joint",
+            "left_hip_yaw_joint",
+            "right_hip_yaw_joint",
+            "left_knee_joint",
+            "right_knee_joint",
+            "left_ankle_pitch_joint",
+            "right_ankle_pitch_joint",
+            "left_ankle_roll_joint",
+            "right_ankle_roll_joint",
+            # "torso_yaw_joint",
+            "left_shoulder_pitch_joint",
+            "right_shoulder_pitch_joint",
+            "left_shoulder_roll_joint",
+            "right_shoulder_roll_joint",
+            "left_shoulder_yaw_joint",
+            "right_shoulder_yaw_joint",
+            "left_elbow_joint",
+            "right_elbow_joint",
+            # "head_pan_joint",
+            # "head_tilt_joint",
+        ],
+        scale=0.5,
+        use_default_offset=True,
+    )
 
 
 @configclass
@@ -65,25 +105,26 @@ class NXPRewards(RewardsCfg):
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_knee_.*"])},
     )
-    joint_deviation_torso = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_yaw_joint")},
-    )
+    # joint_deviation_torso = RewTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-1.0,
+    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_yaw_joint")},
+    # )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*"])},
     )
-    joint_deviation_head = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["head_.*"])},
-    )
+    # joint_deviation_head = RewTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-0.1,
+    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["head_.*"])},
+    # )
 
 
 @configclass
 class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    actions: NXPActions = NXPActions()
     rewards: NXPRewards = NXPRewards()
 
     def __post_init__(self):
@@ -137,9 +178,9 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
         self.rewards.joint_deviation_hip.weight = -0.1
         self.rewards.joint_deviation_knee.weight = -0.01
-        self.rewards.joint_deviation_torso.weight = -1.0
+        # self.rewards.joint_deviation_torso.weight = -1.0
         self.rewards.joint_deviation_arms.weight = -0.1
-        self.rewards.joint_deviation_head.weight = -1.0
+        # self.rewards.joint_deviation_head.weight = -1.0
         self.rewards.flat_orientation_l2.weight = -5.0
 
         # Commands
