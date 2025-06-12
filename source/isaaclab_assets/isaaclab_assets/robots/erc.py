@@ -334,7 +334,7 @@ NXP_LOWER_BODY_CLOSED_LOOP_CFG = ArticulationCfg(
         usd_path=os.path.join(
             os.getcwd(),
             NXP_DIR,
-            "nxp_lower_body_closed_loop/closed_loop_nxp_lower_body_edit.usd",
+            "ankle_knee_nxp_lower_body_closed_loop/ankle_knee_closed_loop_nxp_lower_body_edit.usd",
         ),
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
@@ -355,21 +355,19 @@ NXP_LOWER_BODY_CLOSED_LOOP_CFG = ArticulationCfg(
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.85),
         joint_pos={
-            "left_hip_pitch_joint": -0.52,  # 30 degrees
-            "right_hip_pitch_joint": 0.52,  # -30 degrees
+            "left_hip_pitch_joint": -0.52,  # -30 degrees
+            "right_hip_pitch_joint": 0.52,  # 30 degrees
             "left_hip_roll_joint": -0.05,  # -3 degrees
             "right_hip_roll_joint": 0.05,  # 3 degrees
             "left_hip_yaw_joint": 0.35,  # 20 degrees
-            "right_hip_yaw_joint": -0.35,  # 20 degrees
-            "left_l_knee_joint": 0.79,  # 45 degrees
-            "left_r_knee_joint": -0.79,  # -45 degrees
-            "right_l_knee_joint": 0.79,  # 45 degrees
-            "right_r_knee_joint": -0.79,  # -45 degrees
-            "left_ankle_pitch_joint": 0.44,  # 25 degrees
-            "right_ankle_pitch_joint": -0.44,  # -25 degrees
-            "left_ankle_roll_joint": 0.0,  # 0 degrees
-            "right_ankle_roll_joint": 0.0,  # 0 degrees
-            "torso_yaw_joint": 0.0,  # 0 degrees
+            "right_hip_yaw_joint": -0.35,  # -20 degrees
+            "left_knee_joint": 0.785,  # 45 degrees
+            "right_knee_joint": -0.785,  # -45 degrees
+            "left_ankle_upper_joint": 0.493,  # 28.25 degrees
+            "right_ankle_upper_joint": -0.493,  # -28.25 degrees
+            "left_ankle_lower_joint": 0.3185,  # 18.25 degrees
+            "right_ankle_lower_joint": -0.3185,  # -18.25 degrees
+            "torso_yaw_joint": 0.0,
         },
         joint_vel={".*": 0.0},
     ),
@@ -406,7 +404,7 @@ NXP_LOWER_BODY_CLOSED_LOOP_CFG = ArticulationCfg(
             friction=0.0,
         ),
         "ankle": DCMotorCfg(
-            joint_names_expr=[".*_ankle_.*"],
+            joint_names_expr=[".*_ankle_upper_joint", ".*_ankle_lower_joint"],
             effort_limit=33.5,
             saturation_effort=33.5,
             velocity_limit=21.0,
