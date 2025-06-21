@@ -17,7 +17,7 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
 ##
 # Pre-defined configs
 ##
-from isaaclab_assets import NXP_HUMANOID_MINIMAL_CFG  # isort: skip
+from isaaclab_assets import NXP_HUMANOID_CLOSED_LOOP_CFG  # isort: skip
 
 
 @configclass
@@ -35,10 +35,10 @@ class NXPActions(ActionsCfg):
             "right_hip_yaw_joint",
             "left_knee_joint",
             "right_knee_joint",
-            "left_ankle_pitch_joint",
-            "right_ankle_pitch_joint",
-            "left_ankle_roll_joint",
-            "right_ankle_roll_joint",
+            "left_ankle_upper_joint",
+            "right_ankle_upper_joint",
+            "left_ankle_lower_joint",
+            "right_ankle_lower_joint",
             # "torso_yaw_joint",
             "left_shoulder_pitch_joint",
             "right_shoulder_pitch_joint",
@@ -131,7 +131,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # post init of parent
         super().__post_init__()
         # Scene
-        self.scene.robot = NXP_HUMANOID_MINIMAL_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = NXP_HUMANOID_CLOSED_LOOP_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
 
         # Randomization
@@ -174,7 +174,9 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.feet_slide.weight = -0.25
         self.rewards.undesired_contacts.weight = -1.0
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
-            "contact_forces", body_names=[".*_hip_yaw_link", "torso_link", ".*_shoulder_link"]
+            # "contact_forces", body_names=[".*_hip_yaw_link", "torso_link", ".*_shoulder_link"]
+            "contact_forces",
+            body_names=[".*_hip_yaw_link", "torso_link"],
         )
         self.rewards.joint_deviation_hip.weight = -0.1
         self.rewards.joint_deviation_knee.weight = -0.01
