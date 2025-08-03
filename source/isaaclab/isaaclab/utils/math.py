@@ -95,6 +95,21 @@ def normalize(x: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
 
 
 @torch.jit.script
+def normalize_angle(x):
+    return torch.atan2(torch.sin(x), torch.cos(x))
+
+
+@torch.jit.script
+def normalize_angle_tensor(angles: torch.Tensor):
+    beta = 1e-4  # Prevent floating point error.
+    angles -= beta
+    angles = torch.where(angles > np.pi, angles % np.pi - np.pi, angles)
+    angles = torch.where(angles < -np.pi, angles + np.pi * 2, angles)
+    angles += beta
+    return angles
+
+
+@torch.jit.script
 def wrap_to_pi(angles: torch.Tensor) -> torch.Tensor:
     r"""Wraps input angles (in radians) to the range :math:`[-\pi, \pi]`.
 
