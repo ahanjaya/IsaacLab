@@ -5,6 +5,8 @@
 
 from isaaclab.utils import configclass
 
+import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
+
 from .rough_env_cfg import NXPRoughEnvCfg
 
 
@@ -67,10 +69,35 @@ class NXPFlatEnvCfg_PLAY(NXPFlatEnvCfg):
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
-        # disable randomization for play
-        self.observations.policy.enable_corruption = False
+
         # remove random pushing
         self.events.base_external_force_torque = None
         self.events.push_robot = None
+
+        # disable randomization for play
+        self.observations.policy.enable_corruption = False
+
         # commands
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 0.75)
+        self.use_teleop = False
+        if not self.use_teleop:
+            return
+
+        self.scene.num_envs = 1
+        self.commands.base_velocity = mdp.Se2GamepadVelocityCommandCfg(
+            asset_name="robot",
+            resampling_time_range=(0.0, 0.0),  # No automatic resampling for teleop
+            rel_standing_envs=0.0,  # No standing environments for teleop
+            rel_heading_envs=1.0,
+            heading_command=False,  # Use direct angular velocity from gamepad
+            debug_vis=True,
+            gamepad_sensitivity=(0.5, 0.5, 0.5),  # Sensitivity for vx, vy, omega_z
+            dead_zone=0.01,
+            invert_axes=(
+                False,
+                True,
+                True,
+            ),  # Invert y and z axes for correct direction
+            ranges=mdp.Se2GamepadVelocityCommandCfg.Ranges(
+                lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0)
+            ),
+        )
