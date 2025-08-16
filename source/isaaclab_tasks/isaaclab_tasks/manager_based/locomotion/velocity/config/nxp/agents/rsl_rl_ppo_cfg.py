@@ -44,5 +44,5 @@ class NXPFlatPPORunnerCfg(NXPRoughPPORunnerCfg):
 
         self.max_iterations = 5000
         self.experiment_name = "nxp_flat"
-        self.policy.actor_hidden_dims = [256, 256, 128]
-        self.policy.critic_hidden_dims = [256, 256, 128]
+        self.policy.actor_hidden_dims = [512, 256, 128]
+        self.policy.critic_hidden_dims = [512, 256, 128]
