@@ -8,7 +8,9 @@ import os
 import torch
 
 
-def export_policy_as_jit(policy: object, normalizer: object | None, path: str, filename="policy.pt"):
+def export_policy_as_jit(
+    policy: object, lin_vel_estimator: object, normalizer: object | None, path: str, filename="policy.pt"
+):
     """Export policy into a Torch JIT file.
 
     Args:
@@ -17,12 +19,17 @@ def export_policy_as_jit(policy: object, normalizer: object | None, path: str, f
         path: The path to the saving directory.
         filename: The name of exported JIT file. Defaults to "policy.pt".
     """
-    policy_exporter = _TorchPolicyExporter(policy, normalizer)
+    policy_exporter = _TorchPolicyExporter(policy, lin_vel_estimator, normalizer)
     policy_exporter.export(path, filename)
 
 
 def export_policy_as_onnx(
-    policy: object, path: str, normalizer: object | None = None, filename="policy.onnx", verbose=False
+    policy: object,
+    lin_vel_estimator: object,
+    path: str,
+    normalizer: object | None = None,
+    filename="policy.onnx",
+    verbose=False,
 ):
     """Export policy into a Torch ONNX file.
 
@@ -35,7 +42,7 @@ def export_policy_as_onnx(
     """
     if not os.path.exists(path):
         os.makedirs(path, exist_ok=True)
-    policy_exporter = _OnnxPolicyExporter(policy, normalizer, verbose)
+    policy_exporter = _OnnxPolicyExporter(policy, lin_vel_estimator, normalizer, verbose)
     policy_exporter.export(path, filename)
 
 
@@ -47,7 +54,7 @@ Helper Classes - Private.
 class _TorchPolicyExporter(torch.nn.Module):
     """Exporter of actor-critic into JIT file."""
 
-    def __init__(self, policy, normalizer=None):
+    def __init__(self, policy, lin_vel_estimator, normalizer=None):
         super().__init__()
         self.is_recurrent = policy.is_recurrent
         # copy policy parameters
@@ -61,6 +68,17 @@ class _TorchPolicyExporter(torch.nn.Module):
                 self.rnn = copy.deepcopy(policy.memory_s.rnn)
         else:
             raise ValueError("Policy does not have an actor/student module.")
+
+        # copy lin_vel_estimator network
+        if hasattr(lin_vel_estimator, "linvel_estimator"):
+            # lin_vel_estimator is a LinVelEstimator object
+            self.lin_vel_estimator = copy.deepcopy(lin_vel_estimator.linvel_estimator)
+        elif hasattr(lin_vel_estimator, "__self__") and hasattr(lin_vel_estimator.__self__, "linvel_estimator"):
+            # lin_vel_estimator is the act_inference method
+            self.lin_vel_estimator = copy.deepcopy(lin_vel_estimator.__self__.linvel_estimator)
+        else:
+            raise ValueError("lin_vel_estimator must be either a LinVelEstimator object or its act_inference method")
+
         # set up recurrent network
         if self.is_recurrent:
             self.rnn.cpu()
@@ -97,7 +115,9 @@ class _TorchPolicyExporter(torch.nn.Module):
         return self.actor(x)
 
     def forward(self, x):
-        return self.actor(self.normalizer(x))
+        estimated_lin_vel = self.lin_vel_estimator(x)
+        actor_obs = torch.cat([estimated_lin_vel.detach(), x], dim=1)
+        return self.actor(self.normalizer(actor_obs))
 
     @torch.jit.export
     def reset(self):
@@ -119,7 +139,7 @@ class _TorchPolicyExporter(torch.nn.Module):
 class _OnnxPolicyExporter(torch.nn.Module):
     """Exporter of actor-critic into ONNX file."""
 
-    def __init__(self, policy, normalizer=None, verbose=False):
+    def __init__(self, policy, lin_vel_estimator, normalizer=None, verbose=False):
         super().__init__()
         self.verbose = verbose
         self.is_recurrent = policy.is_recurrent
@@ -134,6 +154,17 @@ class _OnnxPolicyExporter(torch.nn.Module):
                 self.rnn = copy.deepcopy(policy.memory_s.rnn)
         else:
             raise ValueError("Policy does not have an actor/student module.")
+
+        # copy lin_vel_estimator network
+        if hasattr(lin_vel_estimator, "linvel_estimator"):
+            # lin_vel_estimator is a LinVelEstimator object
+            self.lin_vel_estimator = copy.deepcopy(lin_vel_estimator.linvel_estimator)
+        elif hasattr(lin_vel_estimator, "__self__") and hasattr(lin_vel_estimator.__self__, "linvel_estimator"):
+            # lin_vel_estimator is the act_inference method
+            self.lin_vel_estimator = copy.deepcopy(lin_vel_estimator.__self__.linvel_estimator)
+        else:
+            raise ValueError("lin_vel_estimator must be either a LinVelEstimator object or its act_inference method")
+
         # set up recurrent network
         if self.is_recurrent:
             self.rnn.cpu()
@@ -163,7 +194,9 @@ class _OnnxPolicyExporter(torch.nn.Module):
         return self.actor(x), h
 
     def forward(self, x):
-        return self.actor(self.normalizer(x))
+        estimated_lin_vel = self.lin_vel_estimator(x)
+        actor_obs = torch.cat([estimated_lin_vel.detach(), x], dim=1)
+        return self.actor(self.normalizer(actor_obs))
 
     def export(self, path, filename):
         self.to("cpu")
@@ -200,7 +233,7 @@ class _OnnxPolicyExporter(torch.nn.Module):
             else:
                 raise NotImplementedError(f"Unsupported RNN type: {self.rnn_type}")
         else:
-            obs = torch.zeros(1, self.actor[0].in_features)
+            obs = torch.zeros(1, self.actor[0].in_features - 3)  # deduct with the linear velocity
             torch.onnx.export(
                 self,
                 obs,

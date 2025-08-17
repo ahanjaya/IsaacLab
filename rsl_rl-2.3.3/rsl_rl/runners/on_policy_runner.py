@@ -18,6 +18,7 @@ from rsl_rl.modules import (
     ActorCritic,
     ActorCriticRecurrent,
     EmpiricalNormalization,
+    LinVelEstimator,
     StudentTeacher,
     StudentTeacherRecurrent,
 )
@@ -31,6 +32,7 @@ class OnPolicyRunner:
         self.cfg = train_cfg
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
+        self.lin_vel_estimator_cfg = train_cfg["lin_vel_estimator"]
         self.device = device
         self.env = env
 
@@ -73,6 +75,11 @@ class OnPolicyRunner:
             num_obs, num_privileged_obs, self.env.num_actions, **self.policy_cfg
         ).to(self.device)
 
+        # evaluate the lin_vel_estimator
+        lin_vel_estimator_cfg = self.lin_vel_estimator_cfg
+        lin_vel_estimator_cfg["input_dim"] = num_obs - lin_vel_estimator_cfg["output_dim"]
+        lin_vel_estimator: LinVelEstimator = LinVelEstimator(**lin_vel_estimator_cfg).to(self.device)
+
         # resolve dimension of rnd gated state
         if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
             # check if rnd gated state is present
@@ -94,7 +101,7 @@ class OnPolicyRunner:
         # initialize algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))
         self.alg: PPO | Distillation = alg_class(
-            policy, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg
+            policy, lin_vel_estimator, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg
         )
 
         # store training configuration
@@ -403,7 +410,9 @@ class OnPolicyRunner:
         # -- Save model
         saved_dict = {
             "model_state_dict": self.alg.policy.state_dict(),
+            "lin_vel_estimator_state_dict": self.alg.lin_vel_estimator.state_dict(),
             "optimizer_state_dict": self.alg.optimizer.state_dict(),
+            "optimizer_estimator_state_dict": self.alg.optimizer_estimator.state_dict(),
             "iter": self.current_learning_iteration,
             "infos": infos,
         }
@@ -427,9 +436,12 @@ class OnPolicyRunner:
         loaded_dict = torch.load(path, weights_only=False)
         # -- Load model
         resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
+        self.alg.lin_vel_estimator.load_state_dict(loaded_dict["lin_vel_estimator_state_dict"])
+
         # -- Load RND model if used
         if self.alg.rnd:
             self.alg.rnd.load_state_dict(loaded_dict["rnd_state_dict"])
+
         # -- Load observation normalizer if used
         if self.empirical_normalization:
             if resumed_training:
@@ -442,13 +454,17 @@ class OnPolicyRunner:
                 # an rl training. Thus the actor normalizer is loaded for the teacher model. The student's normalizer
                 # is not loaded, as the observation space could differ from the previous rl training.
                 self.privileged_obs_normalizer.load_state_dict(loaded_dict["obs_norm_state_dict"])
+
         # -- load optimizer if used
         if load_optimizer and resumed_training:
             # -- algorithm optimizer
             self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
+            self.alg.optimizer_estimator.load_state_dict(loaded_dict["optimizer_estimator_state_dict"])
+
             # -- RND optimizer if used
             if self.alg.rnd:
                 self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
+
         # -- load current learning iteration
         if resumed_training:
             self.current_learning_iteration = loaded_dict["iter"]
@@ -465,9 +481,16 @@ class OnPolicyRunner:
             policy = lambda x: self.alg.policy.act_inference(self.obs_normalizer(x))  # noqa: E731
         return policy
 
+    def get_inference_lin_vel_estimator(self, device=None):
+        self.eval_mode()  # switch to evaluation mode (dropout for example)
+        if device is not None:
+            self.alg.lin_vel_estimator.to(device)
+        return self.alg.lin_vel_estimator.act_inference
+
     def train_mode(self):
         # -- PPO
         self.alg.policy.train()
+        self.alg.lin_vel_estimator.train()
         # -- RND
         if self.alg.rnd:
             self.alg.rnd.train()
@@ -479,6 +502,7 @@ class OnPolicyRunner:
     def eval_mode(self):
         # -- PPO
         self.alg.policy.eval()
+        self.alg.lin_vel_estimator.eval()
         # -- RND
         if self.alg.rnd:
             self.alg.rnd.eval()

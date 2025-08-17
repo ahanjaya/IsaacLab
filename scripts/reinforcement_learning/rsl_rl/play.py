@@ -138,6 +138,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # obtain the trained policy for inference
     policy = ppo_runner.get_inference_policy(device=env.unwrapped.device)
+    lin_vel_estimator = ppo_runner.get_inference_lin_vel_estimator(device=env.unwrapped.device)
 
     # extract the neural network module
     # we do this in a try-except to maintain backwards compatibility.
@@ -150,9 +151,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # export policy to onnx/jit
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-    export_policy_as_jit(policy_nn, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt")
+    export_policy_as_jit(
+        policy_nn, lin_vel_estimator, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt"
+    )
     export_policy_as_onnx(
-        policy_nn, normalizer=ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.onnx"
+        policy_nn,
+        lin_vel_estimator,
+        normalizer=ppo_runner.obs_normalizer,
+        path=export_model_dir,
+        filename="policy.onnx",
     )
 
     dt = env.unwrapped.step_dt
@@ -166,7 +173,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
-            actions = policy(obs)
+            obs_wo_lin_vel = obs[:, 3:]
+            estimated_lin_vel = lin_vel_estimator(obs_wo_lin_vel)
+            actor_obs = torch.cat([estimated_lin_vel.detach(), obs_wo_lin_vel], dim=1)
+            actions = policy(actor_obs)
             # env stepping
             obs, _, _, _ = env.step(actions)
         if args_cli.video:

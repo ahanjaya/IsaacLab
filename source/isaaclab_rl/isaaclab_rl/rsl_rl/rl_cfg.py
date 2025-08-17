@@ -59,6 +59,31 @@ class RslRlPpoActorCriticRecurrentCfg(RslRlPpoActorCriticCfg):
     """The number of RNN layers."""
 
 
+#########################
+# Module configurations #
+#########################
+
+
+@configclass
+class LinVelEstimatorCfg:
+    """Configuration for the linear velocity estimator."""
+
+    input_dim: int = MISSING
+    """The input dimension for the linear velocity estimator."""
+
+    output_dim: int = MISSING
+    """The output dimension for the linear velocity estimator."""
+
+    hidden_dims: list[int] = MISSING
+    """The hidden dimensions for the linear velocity estimator."""
+
+    learning_rate: float = MISSING
+    """The learning rate for the linear velocity estimator."""
+
+    activation: str = MISSING
+    """The activation function for the linear velocity estimator."""
+
+
 ############################
 # Algorithm configurations #
 ############################
