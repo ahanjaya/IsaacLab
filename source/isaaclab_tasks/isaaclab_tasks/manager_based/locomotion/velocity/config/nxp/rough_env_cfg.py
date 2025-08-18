@@ -105,6 +105,11 @@ class NXPRewards(RewardsCfg):
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_knee_.*"])},
     )
+    joint_deviation_ankle = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_.*"])},
+    )
     # joint_deviation_torso = RewTerm(
     #     func=mdp.joint_deviation_l1,
     #     weight=-1.0,
