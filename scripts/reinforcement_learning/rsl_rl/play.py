@@ -30,6 +30,7 @@ parser.add_argument(
     action="store_true",
     help="Use the pre-trained checkpoint from Nucleus.",
 )
+parser.add_argument("--use_jit", action="store_true", default=False, help="Use JIT policy module.")
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -154,6 +155,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     export_policy_as_jit(
         policy_nn, lin_vel_estimator, ppo_runner.obs_normalizer, path=export_model_dir, filename="policy.pt"
     )
+
+    if args_cli.use_jit:
+        jit_policy_fn = os.path.join(export_model_dir, "policy.pt")
+        jit_policy = torch.jit.load(jit_policy_fn, map_location=env.unwrapped.device)
+        print(f"[INFO] Loading JIT policy from: {jit_policy_fn}")
+
     export_policy_as_onnx(
         policy_nn,
         lin_vel_estimator,
@@ -174,11 +181,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         with torch.inference_mode():
             # agent stepping
             obs_wo_lin_vel = obs[:, 3:]
-            estimated_lin_vel = lin_vel_estimator(obs_wo_lin_vel)
-            actor_obs = torch.cat([estimated_lin_vel.detach(), obs_wo_lin_vel], dim=1)
-            actions = policy(actor_obs)
+
+            if args_cli.use_jit:
+                actions = jit_policy(obs_wo_lin_vel)
+            else:
+                estimated_lin_vel = lin_vel_estimator(obs_wo_lin_vel)
+                actor_obs = torch.cat([estimated_lin_vel.detach(), obs_wo_lin_vel], dim=1)
+                actions = policy(actor_obs)
+
             # env stepping
             obs, _, _, _ = env.step(actions)
+
         if args_cli.video:
             timestep += 1
             # Exit the play loop after recording one video
