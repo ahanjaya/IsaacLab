@@ -19,6 +19,33 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
 ##
 from isaaclab_assets import NXP_HUMANOID_CLOSED_LOOP_CFG  # isort: skip
 
+# Joint names for NXP humanoid
+NXP_JOINT_NAMES = [
+    "left_hip_pitch_joint",
+    "right_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "right_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "right_hip_yaw_joint",
+    "left_knee_joint",
+    "right_knee_joint",
+    "left_ankle_upper_joint",
+    "right_ankle_upper_joint",
+    "left_ankle_lower_joint",
+    "right_ankle_lower_joint",
+    # "torso_yaw_joint",
+    "left_shoulder_pitch_joint",
+    "right_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "right_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "right_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "right_elbow_joint",
+    # "head_pan_joint",
+    # "head_tilt_joint",
+]
+
 
 @configclass
 class NXPActions(ActionsCfg):
@@ -26,31 +53,7 @@ class NXPActions(ActionsCfg):
 
     joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=[
-            "left_hip_pitch_joint",
-            "right_hip_pitch_joint",
-            "left_hip_roll_joint",
-            "right_hip_roll_joint",
-            "left_hip_yaw_joint",
-            "right_hip_yaw_joint",
-            "left_knee_joint",
-            "right_knee_joint",
-            "left_ankle_upper_joint",
-            "right_ankle_upper_joint",
-            "left_ankle_lower_joint",
-            "right_ankle_lower_joint",
-            # "torso_yaw_joint",
-            "left_shoulder_pitch_joint",
-            "right_shoulder_pitch_joint",
-            "left_shoulder_roll_joint",
-            "right_shoulder_roll_joint",
-            "left_shoulder_yaw_joint",
-            "right_shoulder_yaw_joint",
-            "left_elbow_joint",
-            "right_elbow_joint",
-            # "head_pan_joint",
-            # "head_tilt_joint",
-        ],
+        joint_names=NXP_JOINT_NAMES,
         scale=0.5,
         use_default_offset=True,
     )
@@ -67,7 +70,9 @@ class NXPRewards(RewardsCfg):
         params={"command_name": "base_velocity", "std": 0.5},
     )
     track_ang_vel_z_exp = RewTerm(
-        func=mdp.track_ang_vel_z_world_exp, weight=2.0, params={"command_name": "base_velocity", "std": 0.5}
+        func=mdp.track_ang_vel_z_world_exp,
+        weight=2.0,
+        params={"command_name": "base_velocity", "std": 0.5},
     )
     feet_air_time = RewTerm(
         func=mdp.feet_air_time_berkeley,
@@ -138,6 +143,10 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Scene
         self.scene.robot = NXP_HUMANOID_CLOSED_LOOP_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
+
+        # Observation
+        self.observations.policy.joint_pos.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=NXP_JOINT_NAMES)
+        self.observations.policy.joint_vel.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=NXP_JOINT_NAMES)
 
         # Randomization
         self.events.push_robot.params["velocity_range"] = {
