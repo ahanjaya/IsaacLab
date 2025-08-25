@@ -139,7 +139,7 @@ class RslRlVecEnvWrapper(VecEnv):
             obs_dict = self.unwrapped.observation_manager.compute()
         else:
             obs_dict = self.unwrapped._get_observations()
-        return obs_dict["policy"], {"observations": obs_dict}
+        return obs_dict["policy"], obs_dict["lin_vel"], {"observations": obs_dict}
 
     @property
     def episode_length_buf(self) -> torch.Tensor:
@@ -162,13 +162,13 @@ class RslRlVecEnvWrapper(VecEnv):
     def seed(self, seed: int = -1) -> int:  # noqa: D102
         return self.unwrapped.seed(seed)
 
-    def reset(self) -> tuple[torch.Tensor, dict]:  # noqa: D102
+    def reset(self) -> tuple[torch.Tensor, torch.Tensor, dict]:  # noqa: D102
         # reset the environment
         obs_dict, _ = self.env.reset()
         # return observations
-        return obs_dict["policy"], {"observations": obs_dict}
+        return obs_dict["policy"], obs_dict["lin_vel"], {"observations": obs_dict}
 
-    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         # clip actions
         if self.clip_actions is not None:
             actions = torch.clamp(actions, -self.clip_actions, self.clip_actions)
@@ -178,6 +178,7 @@ class RslRlVecEnvWrapper(VecEnv):
         dones = (terminated | truncated).to(dtype=torch.long)
         # move extra observations to the extras dict
         obs = obs_dict["policy"]
+        lin_vel_obs = obs_dict["lin_vel"]
         extras["observations"] = obs_dict
         # move time out information to the extras dict
         # this is only needed for infinite horizon tasks
@@ -185,7 +186,7 @@ class RslRlVecEnvWrapper(VecEnv):
             extras["time_outs"] = truncated
 
         # return the step information
-        return obs, rew, dones, extras
+        return obs, lin_vel_obs, rew, dones, extras
 
     def close(self):  # noqa: D102
         return self.env.close()

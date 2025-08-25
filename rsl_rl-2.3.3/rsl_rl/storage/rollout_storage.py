@@ -14,6 +14,7 @@ class RolloutStorage:
     class Transition:
         def __init__(self):
             self.observations = None
+            self.lin_vel_observations = None
             self.privileged_observations = None
             self.actions = None
             self.privileged_actions = None
@@ -35,6 +36,7 @@ class RolloutStorage:
         num_envs,
         num_transitions_per_env,
         obs_shape,
+        lin_vel_obs_shape,
         privileged_obs_shape,
         actions_shape,
         rnd_state_shape=None,
@@ -52,6 +54,9 @@ class RolloutStorage:
 
         # Core
         self.observations = torch.zeros(num_transitions_per_env, num_envs, *obs_shape, device=self.device)
+        self.lin_vel_observations = torch.zeros(
+            num_transitions_per_env, num_envs, *lin_vel_obs_shape, device=self.device
+        )
         if privileged_obs_shape is not None:
             self.privileged_observations = torch.zeros(
                 num_transitions_per_env, num_envs, *privileged_obs_shape, device=self.device
@@ -93,6 +98,7 @@ class RolloutStorage:
 
         # Core
         self.observations[self.step].copy_(transition.observations)
+        self.lin_vel_observations[self.step].copy_(transition.lin_vel_observations)
         if self.privileged_observations is not None:
             self.privileged_observations[self.step].copy_(transition.privileged_observations)
         self.actions[self.step].copy_(transition.actions)
@@ -190,6 +196,7 @@ class RolloutStorage:
 
         # Core
         observations = self.observations.flatten(0, 1)
+        lin_vel_observations = self.lin_vel_observations.flatten(0, 1)
         if self.privileged_observations is not None:
             privileged_observations = self.privileged_observations.flatten(0, 1)
         else:
@@ -219,6 +226,7 @@ class RolloutStorage:
                 # Create the mini-batch
                 # -- Core
                 obs_batch = observations[batch_idx]
+                lin_vel_obs_batch = lin_vel_observations[batch_idx]
                 privileged_observations_batch = privileged_observations[batch_idx]
                 actions_batch = actions[batch_idx]
 
@@ -237,7 +245,7 @@ class RolloutStorage:
                     rnd_state_batch = None
 
                 # yield the mini-batch
-                yield obs_batch, privileged_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (
+                yield obs_batch, lin_vel_obs_batch, privileged_observations_batch, actions_batch, target_values_batch, advantages_batch, returns_batch, old_actions_log_prob_batch, old_mu_batch, old_sigma_batch, (
                     None,
                     None,
                 ), None, rnd_state_batch

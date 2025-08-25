@@ -172,7 +172,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dt = env.unwrapped.step_dt
 
     # reset environment
-    obs, _ = env.get_observations()
+    obs, obs_lin_vel, _ = env.get_observations()
     timestep = 0
     # simulate environment
     while simulation_app.is_running():
@@ -180,17 +180,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
-            obs_wo_lin_vel = obs[:, 3:]
-
             if args_cli.use_jit:
-                actions = jit_policy(obs_wo_lin_vel)
+                actions = jit_policy(obs)
             else:
-                estimated_lin_vel = lin_vel_estimator(obs_wo_lin_vel)
-                actor_obs = torch.cat([estimated_lin_vel.detach(), obs_wo_lin_vel], dim=1)
+                estimated_lin_vel = lin_vel_estimator(obs)
+                actor_obs = torch.cat([estimated_lin_vel.detach(), obs], dim=1)
                 actions = policy(actor_obs)
 
             # env stepping
-            obs, _, _, _ = env.step(actions)
+            obs, obs_lin_vel, _, _, _ = env.step(actions)
 
         if args_cli.video:
             timestep += 1

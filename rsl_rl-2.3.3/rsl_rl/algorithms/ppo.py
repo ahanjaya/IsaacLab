@@ -126,7 +126,14 @@ class PPO:
         self.l2_loss = nn.MSELoss()
 
     def init_storage(
-        self, training_type, num_envs, num_transitions_per_env, actor_obs_shape, critic_obs_shape, actions_shape
+        self,
+        training_type,
+        num_envs,
+        num_transitions_per_env,
+        actor_obs_shape,
+        lin_vel_obs_shape,
+        critic_obs_shape,
+        actions_shape,
     ):
         # create memory for RND as well :)
         if self.rnd:
@@ -139,26 +146,31 @@ class PPO:
             num_envs,
             num_transitions_per_env,
             actor_obs_shape,
+            lin_vel_obs_shape,
             critic_obs_shape,
             actions_shape,
             rnd_state_shape,
             self.device,
         )
 
-    def act(self, obs, critic_obs):
+    def act(self, obs, lin_vel_obs, critic_obs):
         if self.policy.is_recurrent:
             self.transition.hidden_states = self.policy.get_hidden_states()
 
+        original_obs = obs.clone()
+        with torch.no_grad():
+            lin_vel_estimated_obs = self.lin_vel_estimator(obs)
+        actor_input = torch.cat([lin_vel_estimated_obs, obs], dim=1)
+
         # compute the actions and values
-        self.transition.actions = self.policy.act(obs).detach()
+        self.transition.actions = self.policy.act(actor_input).detach()
         self.transition.values = self.policy.evaluate(critic_obs).detach()
         self.transition.actions_log_prob = self.policy.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.policy.action_mean.detach()
         self.transition.action_sigma = self.policy.action_std.detach()
 
-        # Record the ORIGINAL observations (with ground truth lin_vel) for estimator training
-        # The actor uses actor_obs, but we store obs for training the estimator
-        self.transition.observations = obs
+        self.transition.observations = original_obs
+        self.transition.lin_vel_observations = lin_vel_obs
         self.transition.privileged_observations = critic_obs
 
         return self.transition.actions
@@ -224,6 +236,7 @@ class PPO:
         # iterate over batches
         for (
             obs_batch,
+            lin_vel_obs_batch,
             critic_obs_batch,
             actions_batch,
             target_values_batch,
@@ -269,20 +282,15 @@ class PPO:
                 advantages_batch = advantages_batch.repeat(num_aug, 1)
                 returns_batch = returns_batch.repeat(num_aug, 1)
 
-            # Split obs_batch into ground truth linear velocity and the rest observation
-            lin_vel_gt_obs_batch, lin_vel_obs_batch = (
-                obs_batch[:, : self.lin_vel_estimator.output_dim].clone(),
-                obs_batch[:, self.lin_vel_estimator.output_dim :].clone(),
-            )
-
             # -- lin_vel_estimator
-            lin_vel_estimated_obs_batch = self.lin_vel_estimator(lin_vel_obs_batch)
-            lin_vel_estimator_loss = self.l2_loss(lin_vel_estimated_obs_batch, lin_vel_gt_obs_batch)
+            lin_vel_estimated_obs_batch = self.lin_vel_estimator(obs_batch)
+            lin_vel_estimator_loss = self.l2_loss(lin_vel_estimated_obs_batch, lin_vel_obs_batch)
 
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: we need to do this because we updated the policy with the new parameters
             # -- actor
-            self.policy.act(obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
+            actor_obs_batch = torch.cat([lin_vel_obs_batch, obs_batch], dim=1)
+            self.policy.act(actor_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
             actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
             # -- critic
             value_batch = self.policy.evaluate(critic_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[1])

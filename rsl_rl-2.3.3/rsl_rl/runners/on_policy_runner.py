@@ -48,8 +48,9 @@ class OnPolicyRunner:
             raise ValueError(f"Training type not found for algorithm {self.alg_cfg['class_name']}.")
 
         # resolve dimensions of observations
-        obs, extras = self.env.get_observations()
-        num_obs = obs.shape[1]
+        obs, lin_vel_obs, extras = self.env.get_observations()
+        num_lin_vel_obs = lin_vel_obs.shape[1]
+        num_obs = obs.shape[1] + num_lin_vel_obs
 
         # resolve type of privileged observations
         if self.training_type == "rl":
@@ -110,11 +111,13 @@ class OnPolicyRunner:
         self.empirical_normalization = self.cfg["empirical_normalization"]
         if self.empirical_normalization:
             self.obs_normalizer = EmpiricalNormalization(shape=[num_obs], until=1.0e8).to(self.device)
+            self.lin_vel_obs_normalizer = EmpiricalNormalization(shape=[num_lin_vel_obs], until=1.0e8).to(self.device)
             self.privileged_obs_normalizer = EmpiricalNormalization(shape=[num_privileged_obs], until=1.0e8).to(
                 self.device
             )
         else:
             self.obs_normalizer = torch.nn.Identity().to(self.device)  # no normalization
+            self.lin_vel_obs_normalizer = torch.nn.Identity().to(self.device)  # no normalization
             self.privileged_obs_normalizer = torch.nn.Identity().to(self.device)  # no normalization
 
         # init storage and model
@@ -122,7 +125,8 @@ class OnPolicyRunner:
             self.training_type,
             self.env.num_envs,
             self.num_steps_per_env,
-            [num_obs],
+            [num_obs - num_lin_vel_obs],
+            [num_lin_vel_obs],
             [num_privileged_obs],
             [self.env.num_actions],
         )
@@ -173,9 +177,11 @@ class OnPolicyRunner:
             )
 
         # start learning
-        obs, extras = self.env.get_observations()
+        obs, lin_vel_obs, extras = self.env.get_observations()
         privileged_obs = extras["observations"].get(self.privileged_obs_type, obs)
+        privileged_obs = torch.cat([lin_vel_obs, privileged_obs], dim=1)
         obs, privileged_obs = obs.to(self.device), privileged_obs.to(self.device)
+        lin_vel_obs = lin_vel_obs.to(self.device)
         self.train_mode()  # switch to train mode (for dropout for example)
 
         # Book keeping
@@ -208,19 +214,25 @@ class OnPolicyRunner:
             with torch.inference_mode():
                 for _ in range(self.num_steps_per_env):
                     # Sample actions
-                    actions = self.alg.act(obs, privileged_obs)
+                    actions = self.alg.act(obs, lin_vel_obs, privileged_obs)
                     # Step the environment
-                    obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
+                    obs, lin_vel_obs, rewards, dones, infos = self.env.step(actions.to(self.env.device))
                     # Move to device
-                    obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
+                    obs, lin_vel_obs, rewards, dones = (
+                        obs.to(self.device),
+                        lin_vel_obs.to(self.device),
+                        rewards.to(self.device),
+                        dones.to(self.device),
+                    )
                     # perform normalization
                     obs = self.obs_normalizer(obs)
+                    lin_vel_obs = self.lin_vel_obs_normalizer(lin_vel_obs)
                     if self.privileged_obs_type is not None:
                         privileged_obs = self.privileged_obs_normalizer(
                             infos["observations"][self.privileged_obs_type].to(self.device)
                         )
                     else:
-                        privileged_obs = obs
+                        privileged_obs = torch.cat([lin_vel_obs, obs], dim=1)
 
                     # process the step
                     self.alg.process_env_step(rewards, dones, infos)
@@ -423,6 +435,7 @@ class OnPolicyRunner:
         # -- Save observation normalizer if used
         if self.empirical_normalization:
             saved_dict["obs_norm_state_dict"] = self.obs_normalizer.state_dict()
+            saved_dict["lin_vel_obs_norm_state_dict"] = self.lin_vel_obs_normalizer.state_dict()
             saved_dict["privileged_obs_norm_state_dict"] = self.privileged_obs_normalizer.state_dict()
 
         # save model
@@ -448,6 +461,7 @@ class OnPolicyRunner:
                 # if a previous training is resumed, the actor/student normalizer is loaded for the actor/student
                 # and the critic/teacher normalizer is loaded for the critic/teacher
                 self.obs_normalizer.load_state_dict(loaded_dict["obs_norm_state_dict"])
+                self.lin_vel_obs_normalizer.load_state_dict(loaded_dict["lin_vel_obs_norm_state_dict"])
                 self.privileged_obs_normalizer.load_state_dict(loaded_dict["privileged_obs_norm_state_dict"])
             else:
                 # if the training is not resumed but a model is loaded, this run must be distillation training following
@@ -478,6 +492,7 @@ class OnPolicyRunner:
         if self.cfg["empirical_normalization"]:
             if device is not None:
                 self.obs_normalizer.to(device)
+                self.lin_vel_obs_normalizer.to(device)
             policy = lambda x: self.alg.policy.act_inference(self.obs_normalizer(x))  # noqa: E731
         return policy
 
