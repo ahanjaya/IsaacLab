@@ -32,6 +32,9 @@ parser.add_argument(
 )
 parser.add_argument("--use_jit", action="store_true", default=False, help="Use JIT policy module.")
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument("--udp_host", type=str, default="localhost", help="UDP host for publishing actions.")
+parser.add_argument("--udp_port", type=int, default=8888, help="UDP port for publishing actions.")
+parser.add_argument("--enable_udp", action="store_true", default=False, help="Enable UDP publishing of actions.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -52,7 +55,9 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import gymnasium as gym
+import json
 import os
+import socket
 import time
 import torch
 
@@ -80,7 +85,6 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 @hydra_task_config(args_cli.task, "rsl_rl_cfg_entry_point")
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlOnPolicyRunnerCfg):
-    """Play with RSL-RL agent."""
     # grab task name for checkpoint path
     task_name = args_cli.task.split(":")[-1]
     train_task_name = task_name.replace("-Play", "")
@@ -171,6 +175,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     dt = env.unwrapped.step_dt
 
+    # initialize UDP socket for publishing actions
+    udp_socket = None
+    if args_cli.enable_udp:
+        try:
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print(f"[INFO] UDP socket initialized. Publishing to {args_cli.udp_host}:{args_cli.udp_port}")
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize UDP socket: {e}")
+            udp_socket = None
+
     # reset environment
     obs, obs_lin_vel, _ = env.get_observations()
     timestep = 0
@@ -187,11 +201,26 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 actor_obs = torch.cat([estimated_lin_vel.detach(), obs], dim=1)
                 actions = policy(actor_obs)
 
+            actions_numpy = actions.detach().cpu().numpy()[0]
+
+            # publish actions via UDP
+            if udp_socket is not None and args_cli.enable_udp:
+                try:
+                    # create data payload
+                    data_payload = {"timestamp": time.time(), "timestep": timestep, "actions": actions_numpy.tolist()}
+
+                    # convert to JSON and send via UDP
+                    json_data = json.dumps(data_payload)
+                    udp_socket.sendto(json_data.encode("utf-8"), (args_cli.udp_host, args_cli.udp_port))
+                except Exception as e:
+                    print(f"[WARNING] Failed to send UDP data: {e}")
+
             # env stepping
             obs, obs_lin_vel, _, _, _ = env.step(actions)
 
+        timestep += 1
+
         if args_cli.video:
-            timestep += 1
             # Exit the play loop after recording one video
             if timestep == args_cli.video_length:
                 break
@@ -200,6 +229,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         sleep_time = dt - (time.time() - start_time)
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
+
+    # close UDP socket if initialized
+    if udp_socket is not None:
+        udp_socket.close()
+        print("[INFO] UDP socket closed.")
 
     # close the simulator
     env.close()
