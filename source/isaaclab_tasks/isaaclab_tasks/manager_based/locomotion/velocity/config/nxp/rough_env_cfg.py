@@ -55,6 +55,7 @@ class NXPActions(ActionsCfg):
         asset_name="robot",
         joint_names=NXP_JOINT_NAMES,
         scale=0.5,
+        preserve_order=True,
         use_default_offset=True,
     )
 
