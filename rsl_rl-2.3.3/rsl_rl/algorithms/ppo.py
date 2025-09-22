@@ -125,9 +125,6 @@ class PPO:
         # Losses
         self.l2_loss = nn.MSELoss()
 
-        # Bootstrapping
-        self.use_lin_vel_estimator = False
-
     def init_storage(
         self,
         training_type,
@@ -162,13 +159,9 @@ class PPO:
 
         original_obs = obs.clone()
 
-        # Simple bootstrapping
-        if self.use_lin_vel_estimator:
-            with torch.no_grad():
-                lin_vel_estimated_obs = self.lin_vel_estimator(obs)
-            actor_input = torch.cat([lin_vel_estimated_obs, obs], dim=1)
-        else:
-            actor_input = torch.cat([lin_vel_obs, obs], dim=1)
+        with torch.no_grad():
+            lin_vel_estimated_obs = self.lin_vel_estimator(obs)
+        actor_input = torch.cat([lin_vel_estimated_obs, obs], dim=1)
 
         # compute the actions and values
         self.transition.actions = self.policy.act(actor_input).detach()
@@ -297,17 +290,7 @@ class PPO:
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: we need to do this because we updated the policy with the new parameters
             # -- actor
-
-            # TODO: Verify or improve bootstrapping strategy
-            if not self.use_lin_vel_estimator:
-                self.use_lin_vel_estimator = self.policy.action_std.mean() <= 0.45
-
-            # Simple bootstrapping
-            if self.use_lin_vel_estimator:
-                actor_obs_batch = torch.cat([lin_vel_estimated_obs_batch.detach(), obs_batch], dim=1)
-            else:
-                actor_obs_batch = torch.cat([lin_vel_obs_batch, obs_batch], dim=1)
-
+            actor_obs_batch = torch.cat([lin_vel_estimated_obs_batch.detach(), obs_batch], dim=1)
             self.policy.act(actor_obs_batch, masks=masks_batch, hidden_states=hid_states_batch[0])
             actions_log_prob_batch = self.policy.get_actions_log_prob(actions_batch)
             # -- critic
