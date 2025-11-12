@@ -72,39 +72,69 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
     actuators={
         "torso": DCMotorCfg(
             joint_names_expr=["torso_yaw_joint"],
-            effort_limit=33.5,
-            saturation_effort=33.5,
-            velocity_limit=21.0,
+            effort_limit=17.0,
+            saturation_effort=17.0,
+            velocity_limit=33.93,
             stiffness=25.0,
             damping=0.5,
             armature=0.01,
             friction=0.0,
         ),
-        "hip": DCMotorCfg(
-            joint_names_expr=[".*_hip_.*"],
-            effort_limit=33.5,  # 88.0
-            saturation_effort=33.5,  # 88.0
-            velocity_limit=21.0,
-            stiffness=25.0,  # 88.0
-            damping=0.5,  # 5.0
+        "hip_pitch": DCMotorCfg(
+            joint_names_expr=[".*_hip_pitch_.*"],
+            effort_limit=120.0,
+            saturation_effort=120.0,
+            velocity_limit=15.74,
+            stiffness=25.0,
+            damping=0.5,
+            armature=0.01,
+            friction=0.0,
+        ),
+        "hip_roll": DCMotorCfg(
+            joint_names_expr=[".*_hip_roll_.*"],
+            effort_limit=120.0,
+            saturation_effort=120.0,
+            velocity_limit=15.74,
+            stiffness=25.0,
+            damping=0.5,
+            armature=0.01,
+            friction=0.0,
+        ),
+        "hip_yaw": DCMotorCfg(
+            joint_names_expr=[".*_hip_yaw_.*"],
+            effort_limit=60.0,
+            saturation_effort=60.0,
+            velocity_limit=16.96,
+            stiffness=25.0,
+            damping=0.5,
             armature=0.01,
             friction=0.0,
         ),
         "knee": DCMotorCfg(
             joint_names_expr=[".*_knee_.*"],
-            effort_limit=33.5 * 2,  # 139.0
-            saturation_effort=33.5 * 2,  # 139.0
-            velocity_limit=21.0,
-            stiffness=25.0,  # 139.0
-            damping=0.5,  # 5.0
+            effort_limit=120.0,
+            saturation_effort=120.0,
+            velocity_limit=15.74,
+            stiffness=25.0,
+            damping=0.5,
             armature=0.01,
             friction=0.0,
         ),
-        "ankle": DCMotorCfg(
-            joint_names_expr=[".*_ankle_.*"],
-            effort_limit=33.5,
-            saturation_effort=33.5,
-            velocity_limit=21.0,
+        "ankle_pitch": DCMotorCfg(
+            joint_names_expr=[".*_ankle_pitch_.*"],
+            effort_limit=60.0,
+            saturation_effort=60.0,
+            velocity_limit=16.96,
+            stiffness=25.0,
+            damping=0.5,
+            armature=0.01,
+            friction=0.0,
+        ),
+        "ankle_roll": DCMotorCfg(
+            joint_names_expr=[".*_ankle_roll_.*"],
+            effort_limit=17.0,
+            saturation_effort=17.0,
+            velocity_limit=33.93,
             stiffness=25.0,
             damping=0.5,
             armature=0.01,
@@ -112,9 +142,9 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
         ),
         "arm": DCMotorCfg(
             joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
-            effort_limit=33.5,
-            saturation_effort=33.5,
-            velocity_limit=21.0,
+            effort_limit=17.0,
+            saturation_effort=17.0,
+            velocity_limit=33.93,
             stiffness=25.0,
             damping=0.5,
             armature=0.01,
@@ -122,9 +152,9 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
         ),
         "head": DCMotorCfg(
             joint_names_expr=["head_.*"],
-            effort_limit=33.5,
-            saturation_effort=33.5,
-            velocity_limit=21.0,
+            effort_limit=14.0,
+            saturation_effort=14.0,
+            velocity_limit=24.50,
             stiffness=25.0,
             damping=0.5,
             armature=0.01,
