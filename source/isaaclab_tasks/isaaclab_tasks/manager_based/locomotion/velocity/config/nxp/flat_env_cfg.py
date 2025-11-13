@@ -83,6 +83,7 @@ class NXPFlatEnvCfg_PLAY(NXPFlatEnvCfg):
             return
 
         self.scene.num_envs = 1
+        self.episode_length_s = 2000.0
         self.commands.base_velocity = mdp.Se2GamepadVelocityCommandCfg(
             asset_name="robot",
             resampling_time_range=(0.0, 0.0),  # No automatic resampling for teleop

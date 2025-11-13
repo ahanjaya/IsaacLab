@@ -33,7 +33,6 @@ NXP_JOINT_NAMES = [
     "right_ankle_pitch_joint",
     "left_ankle_roll_joint",
     "right_ankle_roll_joint",
-    # "torso_yaw_joint",
     "left_shoulder_pitch_joint",
     "right_shoulder_pitch_joint",
     "left_shoulder_roll_joint",
@@ -42,8 +41,6 @@ NXP_JOINT_NAMES = [
     "right_shoulder_yaw_joint",
     "left_elbow_joint",
     "right_elbow_joint",
-    # "head_pan_joint",
-    # "head_tilt_joint",
 ]
 
 
@@ -116,21 +113,11 @@ class NXPRewards(RewardsCfg):
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_.*"])},
     )
-    # joint_deviation_torso = RewTerm(
-    #     func=mdp.joint_deviation_l1,
-    #     weight=-1.0,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names="torso_yaw_joint")},
-    # )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*"])},
     )
-    # joint_deviation_head = RewTerm(
-    #     func=mdp.joint_deviation_l1,
-    #     weight=-0.1,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["head_.*"])},
-    # )
 
 
 @configclass
@@ -189,15 +176,12 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.feet_slide.weight = -0.25
         self.rewards.undesired_contacts.weight = -1.0
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
-            # "contact_forces", body_names=[".*_hip_yaw_link", "torso_link", ".*_shoulder_link"]
             "contact_forces",
             body_names=[".*_hip_yaw_link", "torso_link"],
         )
         self.rewards.joint_deviation_hip.weight = -0.1
         self.rewards.joint_deviation_knee.weight = -0.01
-        # self.rewards.joint_deviation_torso.weight = -1.0
         self.rewards.joint_deviation_arms.weight = -0.1
-        # self.rewards.joint_deviation_head.weight = -1.0
         self.rewards.flat_orientation_l2.weight = -5.0
 
         # Commands
