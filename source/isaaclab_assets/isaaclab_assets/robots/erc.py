@@ -44,24 +44,24 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
         joint_pos={
             "left_hip_pitch_joint": 0.52,  # 30
             "right_hip_pitch_joint": -0.52,  # -30
-            "left_hip_roll_joint": -0.05,  # -3
-            "right_hip_roll_joint": 0.05,  # 3
+            "left_hip_roll_joint": 0.05,  # 3
+            "right_hip_roll_joint": -0.05,  # -3
             "left_hip_yaw_joint": -0.35,  # -20
             "right_hip_yaw_joint": 0.35,  # 20
-            "left_knee_joint": 0.785,  # 45
+            "left_knee_joint": -0.785,  # -45
             "right_knee_joint": 0.785,  # 45
-            "left_ankle_pitch_joint": -0.436,  # -25
+            "left_ankle_pitch_joint": 0.436,  # 25
             "right_ankle_pitch_joint": -0.436,  # -25
             "left_ankle_roll_joint": 0.0,
             "right_ankle_roll_joint": 0.0,
             "torso_yaw_joint": 0.0,
             "left_shoulder_pitch_joint": 0.0,
             "right_shoulder_pitch_joint": 0.0,
-            "left_shoulder_roll_joint": 0.13,  # 7.5
-            "right_shoulder_roll_joint": -0.13,  # -7.5
+            "left_shoulder_roll_joint": -0.13,  # -7.5
+            "right_shoulder_roll_joint": 0.13,  # 7.5
             "left_shoulder_yaw_joint": -0.13,  # -7.5
             "right_shoulder_yaw_joint": 0.13,  # 7.5
-            "left_elbow_joint": -0.52,  # -30
+            "left_elbow_joint": 0.52,  # 30
             "right_elbow_joint": -0.52,  # -30
             "head_pan_joint": 0.0,
             "head_tilt_joint": 0.0,
