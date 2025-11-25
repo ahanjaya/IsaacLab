@@ -133,8 +133,12 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
 
         # Observation
-        self.observations.policy.joint_pos.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=NXP_JOINT_NAMES)
-        self.observations.policy.joint_vel.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=NXP_JOINT_NAMES)
+        self.observations.policy.joint_pos.params["asset_cfg"] = SceneEntityCfg(
+            "robot", joint_names=NXP_JOINT_NAMES, preserve_order=True
+        )
+        self.observations.policy.joint_vel.params["asset_cfg"] = SceneEntityCfg(
+            "robot", joint_names=NXP_JOINT_NAMES, preserve_order=True
+        )
 
         # Randomization
         self.events.push_robot.params["velocity_range"] = {
