@@ -34,6 +34,7 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument("--follow-robot", action="store_true", default=False, help="Follow the robot with the camera.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -446,6 +447,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     obs = env.get_observations()
     timestep = 0
     obs_pos_idx = 12
+
+    # Set up viewport camera to track the robot
+    if args_cli.follow_robot:
+        vcc = env.unwrapped.viewport_camera_controller
+        vcc.update_view_to_asset_root("robot")
+        # vcc.set_view_env_index(0)  # Track environment 0
+        # vcc.update_view_to_env()
+        vcc.update_view_location(eye=[2.0, 2.0, 0.5], lookat=[0.0, 0.0, 0.0])
 
     default_joint_pos = np.array(
         [
