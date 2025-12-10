@@ -41,28 +41,53 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.85),
+        # joint_pos={
+        #     "left_hip_pitch_joint": 0.52,  # 30
+        #     "right_hip_pitch_joint": -0.52,  # -30
+        #     "left_hip_roll_joint": 0.05,  # 3
+        #     "right_hip_roll_joint": -0.05,  # -3
+        #     "left_hip_yaw_joint": -0.35,  # -20
+        #     "right_hip_yaw_joint": 0.35,  # 20
+        #     "left_knee_joint": -0.785,  # -45
+        #     "right_knee_joint": 0.785,  # 45
+        #     "left_ankle_pitch_joint": 0.436,  # 25
+        #     "right_ankle_pitch_joint": -0.436,  # -25
+        #     "left_ankle_roll_joint": 0.0,
+        #     "right_ankle_roll_joint": 0.0,
+        #     "torso_yaw_joint": 0.0,
+        #     "left_shoulder_pitch_joint": 0.0,
+        #     "right_shoulder_pitch_joint": 0.0,
+        #     "left_shoulder_roll_joint": -0.13,  # -7.5
+        #     "right_shoulder_roll_joint": 0.13,  # 7.5
+        #     "left_shoulder_yaw_joint": -0.13,  # -7.5
+        #     "right_shoulder_yaw_joint": 0.13,  # 7.5
+        #     "left_elbow_joint": 0.52,  # 30
+        #     "right_elbow_joint": -0.52,  # -30
+        #     "head_pan_joint": 0.0,
+        #     "head_tilt_joint": 0.0,
+        # },
         joint_pos={
-            "left_hip_pitch_joint": 0.52,  # 30
-            "right_hip_pitch_joint": -0.52,  # -30
-            "left_hip_roll_joint": 0.05,  # 3
-            "right_hip_roll_joint": -0.05,  # -3
-            "left_hip_yaw_joint": -0.35,  # -20
-            "right_hip_yaw_joint": 0.35,  # 20
-            "left_knee_joint": -0.785,  # -45
-            "right_knee_joint": 0.785,  # 45
-            "left_ankle_pitch_joint": 0.436,  # 25
-            "right_ankle_pitch_joint": -0.436,  # -25
+            "left_hip_pitch_joint": 0.0,
+            "right_hip_pitch_joint": 0.0,
+            "left_hip_roll_joint": 0.0,
+            "right_hip_roll_joint": 0.0,
+            "left_hip_yaw_joint": 0.0,
+            "right_hip_yaw_joint": 0.0,
+            "left_knee_joint": 0.0,
+            "right_knee_joint": 0.0,
+            "left_ankle_pitch_joint": 0.0,
+            "right_ankle_pitch_joint": 0.0,
             "left_ankle_roll_joint": 0.0,
             "right_ankle_roll_joint": 0.0,
             "torso_yaw_joint": 0.0,
             "left_shoulder_pitch_joint": 0.0,
             "right_shoulder_pitch_joint": 0.0,
-            "left_shoulder_roll_joint": -0.13,  # -7.5
-            "right_shoulder_roll_joint": 0.13,  # 7.5
-            "left_shoulder_yaw_joint": -0.13,  # -7.5
-            "right_shoulder_yaw_joint": 0.13,  # 7.5
-            "left_elbow_joint": 0.52,  # 30
-            "right_elbow_joint": -0.52,  # -30
+            "left_shoulder_roll_joint": 0.0,
+            "right_shoulder_roll_joint": 0.0,
+            "left_shoulder_yaw_joint": 0.0,
+            "right_shoulder_yaw_joint": 0.0,
+            "left_elbow_joint": 0.0,
+            "right_elbow_joint": 0.0,
             "head_pan_joint": 0.0,
             "head_tilt_joint": 0.0,
         },
@@ -77,34 +102,34 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
             velocity_limit=33.93,
             stiffness=40.0,
             damping=2.0,
-            armature=0.01,
+            armature=0.1,
         ),
         "hip_pitch": DCMotorCfg(
             joint_names_expr=[".*_hip_pitch_.*"],
             effort_limit=120.0,
             saturation_effort=120.0,
             velocity_limit=15.74,
-            stiffness=150.0,
-            damping=5.0,
-            armature=0.01,
+            stiffness=200.0,
+            damping=6.0,
+            armature=0.1,
         ),
         "hip_roll": DCMotorCfg(
             joint_names_expr=[".*_hip_roll_.*"],
             effort_limit=120.0,
             saturation_effort=120.0,
             velocity_limit=15.74,
-            stiffness=100.0,
-            damping=4.0,
-            armature=0.01,
+            stiffness=200.0,
+            damping=6.0,
+            armature=0.1,
         ),
         "hip_yaw": DCMotorCfg(
             joint_names_expr=[".*_hip_yaw_.*"],
-            effort_limit=60.0,
-            saturation_effort=60.0,
-            velocity_limit=16.96,
-            stiffness=80.0,
-            damping=3.0,
-            armature=0.01,
+            effort_limit=120.0,
+            saturation_effort=120.0,
+            velocity_limit=15.74,
+            stiffness=200.0,
+            damping=6.0,
+            armature=0.1,
         ),
         "knee": DCMotorCfg(
             joint_names_expr=[".*_knee_.*"],
@@ -113,25 +138,25 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
             velocity_limit=15.74,
             stiffness=200.0,
             damping=6.0,
-            armature=0.01,
+            armature=0.1,
         ),
         "ankle_pitch": DCMotorCfg(
             joint_names_expr=[".*_ankle_pitch_.*"],
-            effort_limit=60.0,
-            saturation_effort=60.0,
-            velocity_limit=16.96,
-            stiffness=150.0,
-            damping=5.0,
-            armature=0.01,
+            effort_limit=120.0,
+            saturation_effort=120.0,
+            velocity_limit=15.74,
+            stiffness=200.0,
+            damping=6.0,
+            armature=0.1,
         ),
         "ankle_roll": DCMotorCfg(
             joint_names_expr=[".*_ankle_roll_.*"],
-            effort_limit=17.0,
-            saturation_effort=17.0,
-            velocity_limit=33.93,
-            stiffness=40.0,
-            damping=2.0,
-            armature=0.01,
+            effort_limit=120.0,
+            saturation_effort=120.0,
+            velocity_limit=15.74,
+            stiffness=200.0,
+            damping=6.0,
+            armature=0.1,
         ),
         "arm": DCMotorCfg(
             joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
@@ -140,7 +165,7 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
             velocity_limit=33.93,
             stiffness=30.0,
             damping=1.5,
-            armature=0.01,
+            armature=0.1,
         ),
         "head": DCMotorCfg(
             joint_names_expr=["head_.*"],
@@ -149,7 +174,7 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
             velocity_limit=24.50,
             stiffness=30.0,
             damping=1.5,
-            armature=0.01,
+            armature=0.1,
         ),
     },
 )
