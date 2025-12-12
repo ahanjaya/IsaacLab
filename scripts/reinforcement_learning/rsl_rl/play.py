@@ -33,8 +33,12 @@ parser.add_argument(
     action="store_true",
     help="Use the pre-trained checkpoint from Nucleus.",
 )
-parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
-parser.add_argument("--follow-robot", action="store_true", default=False, help="Follow the robot with the camera.")
+parser.add_argument("--plot", action="store_true", default=False, help="Plot robot joint actions and positions.")
+parser.add_argument("--real_time", action="store_true", default=False, help="Run in real-time.")
+parser.add_argument("--follow_robot", action="store_true", default=False, help="Follow the robot with the camera.")
+parser.add_argument("--udp_host", type=str, default="localhost", help="UDP host for publishing actions.")
+parser.add_argument("--udp_port", type=int, default=8888, help="UDP port for publishing actions.")
+parser.add_argument("--enable_udp", action="store_true", default=False, help="Enable UDP publishing of actions.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -63,10 +67,12 @@ installed_version = metadata.version("rsl-rl-lib")
 """Rest everything follows."""
 
 import gymnasium as gym
+import json
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 import numpy as np
 import os
+import socket
 import time
 
 import gymnasium as gym
@@ -98,271 +104,160 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
+np.set_printoptions(precision=4, suppress=True)
+
 # PLACEHOLDER: Extension template (do not remove this comment)
 
 
 def _plot_joint_visualization(queue) -> None:
     plt.ion()  # Turn on interactive mode
-    fig, ax = plt.subplots(4, 2, figsize=(20, 15))
 
-    window_size = 300
-    left_hip_pitch_action_queue = deque(maxlen=window_size)
-    left_hip_pitch_pos_queue = deque(maxlen=window_size)
-    right_hip_pitch_action_queue = deque(maxlen=window_size)
-    right_hip_pitch_pos_queue = deque(maxlen=window_size)
+    # Configuration
+    joint_names = [
+        "Hip Pitch",
+        "Hip Roll",
+        "Hip Yaw",
+        "Knee",
+        "Ankle Pitch",
+        "Ankle Roll",
+        "Shoulder Pitch",
+        "Shoulder Roll",
+        "Shoulder Yaw",
+        "Elbow",
+    ]
+    num_joints = len(joint_names)
+    window_size = 50
+    ylim = (-1.0, 1.0)
 
-    left_hip_roll_action_queue = deque(maxlen=window_size)
-    left_hip_roll_pos_queue = deque(maxlen=window_size)
-    right_hip_roll_action_queue = deque(maxlen=window_size)
-    right_hip_roll_pos_queue = deque(maxlen=window_size)
+    # Create figure and axes
+    fig, ax = plt.subplots(num_joints, 2, figsize=(20, 15))
 
-    left_hip_yaw_action_queue = deque(maxlen=window_size)
-    left_hip_yaw_pos_queue = deque(maxlen=window_size)
-    right_hip_yaw_action_queue = deque(maxlen=window_size)
-    right_hip_yaw_pos_queue = deque(maxlen=window_size)
+    # Initialize data structures
+    joint_data = {}
+    lines = {}
 
-    left_knee_action_queue = deque(maxlen=window_size)
-    left_knee_pos_queue = deque(maxlen=window_size)
-    right_knee_action_queue = deque(maxlen=window_size)
-    right_knee_pos_queue = deque(maxlen=window_size)
+    for i, joint_name in enumerate(joint_names):
+        for side in ["left", "right"]:
+            col = 0 if side == "left" else 1
+            key = f"{side}_{joint_name.lower().replace(' ', '_')}"
 
-    (line_left_hip_pitch,) = ax[0, 0].plot(left_hip_pitch_action_queue, label="Left Hip Pitch Action")
-    (line_left_hip_pitch_pos,) = ax[0, 0].plot(left_hip_pitch_pos_queue, label="Left Hip Pitch Pos")
-    (line_right_hip_pitch,) = ax[0, 1].plot(right_hip_pitch_action_queue, label="Right Hip Pitch Action")
-    (line_right_hip_pitch_pos,) = ax[0, 1].plot(right_hip_pitch_pos_queue, label="Right Hip Pitch Pos")
+            # Create queues
+            joint_data[f"{key}_target"] = deque(maxlen=window_size)
+            joint_data[f"{key}_current"] = deque(maxlen=window_size)
 
-    (line_left_hip_roll,) = ax[1, 0].plot(left_hip_roll_action_queue, label="Left Hip Roll Action")
-    (line_left_hip_roll_pos,) = ax[1, 0].plot(left_hip_roll_pos_queue, label="Left Hip Roll Pos")
-    (line_right_hip_roll,) = ax[1, 1].plot(right_hip_roll_action_queue, label="Right Hip Roll Action")
-    (line_right_hip_roll_pos,) = ax[1, 1].plot(right_hip_roll_pos_queue, label="Right Hip Roll Pos")
+            # Create lines
+            (lines[f"{key}_target"],) = ax[i, col].plot(
+                joint_data[f"{key}_target"], label=f"{side.title()} {joint_name} Target"
+            )
+            (lines[f"{key}_current"],) = ax[i, col].plot(
+                joint_data[f"{key}_current"],
+                label=f"{side.title()} {joint_name} Current",
+            )
 
-    (line_left_hip_yaw,) = ax[2, 0].plot(left_hip_yaw_action_queue, label="Left Hip Yaw Action")
-    (line_left_hip_yaw_pos,) = ax[2, 0].plot(left_hip_yaw_pos_queue, label="Left Hip Yaw Pos")
-    (line_right_hip_yaw,) = ax[2, 1].plot(right_hip_yaw_action_queue, label="Right Hip Yaw Action")
-    (line_right_hip_yaw_pos,) = ax[2, 1].plot(right_hip_yaw_pos_queue, label="Right Hip Yaw Pos")
+            # Configure subplot
+            _configure_subplot(ax[i, col], f"{side.title()} {joint_name}", ylim)
 
-    (line_left_knee,) = ax[3, 0].plot(left_knee_action_queue, label="Left Knee Action")
-    (line_left_knee_pos,) = ax[3, 0].plot(left_knee_pos_queue, label="Left Knee Pos")
-    (line_right_knee,) = ax[3, 1].plot(right_knee_action_queue, label="Right Knee Action")
-    (line_right_knee_pos,) = ax[3, 1].plot(right_knee_pos_queue, label="Right Knee Pos")
+    def _update_joint_data(data_tuple):
+        """Update joint data from queue data."""
+        data_keys = [
+            "left_hip_pitch_target",
+            "left_hip_pitch_current",
+            "right_hip_pitch_target",
+            "right_hip_pitch_current",
+            "left_hip_roll_target",
+            "left_hip_roll_current",
+            "right_hip_roll_target",
+            "right_hip_roll_current",
+            "left_hip_yaw_target",
+            "left_hip_yaw_current",
+            "right_hip_yaw_target",
+            "right_hip_yaw_current",
+            "left_knee_target",
+            "left_knee_current",
+            "right_knee_target",
+            "right_knee_current",
+            "left_ankle_pitch_target",
+            "left_ankle_pitch_current",
+            "right_ankle_pitch_target",
+            "right_ankle_pitch_current",
+            "left_ankle_roll_target",
+            "left_ankle_roll_current",
+            "right_ankle_roll_target",
+            "right_ankle_roll_current",
+            "left_shoulder_pitch_target",
+            "left_shoulder_pitch_current",
+            "right_shoulder_pitch_target",
+            "right_shoulder_pitch_current",
+            "left_shoulder_roll_target",
+            "left_shoulder_roll_current",
+            "right_shoulder_roll_target",
+            "right_shoulder_roll_current",
+            "left_shoulder_yaw_target",
+            "left_shoulder_yaw_current",
+            "right_shoulder_yaw_target",
+            "right_shoulder_yaw_current",
+            "left_elbow_target",
+            "left_elbow_current",
+            "right_elbow_target",
+            "right_elbow_current",
+        ]
 
-    ax[0, 0].set_title("Left Hip Pitch")
-    ax[0, 0].set_xlabel("Time Step")
-    ax[0, 0].set_ylabel("Angle (rad)")
-    ax[0, 0].legend()
-    ax[0, 0].set_ylim(-1.5, 1.5)
-    ax[0, 0].grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
+        for i, key in enumerate(data_keys):
+            value = data_tuple[i]
+            if value is None:
+                joint_data[key].clear()
+            else:
+                joint_data[key].append(value)
 
-    ax[0, 1].set_title("Right Hip Pitch")
-    ax[0, 1].set_xlabel("Time Step")
-    ax[0, 1].set_ylabel("Angle (rad)")
-    ax[0, 1].legend()
-    ax[0, 1].set_ylim(-1.5, 1.5)
-    ax[0, 1].grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
+    def _update_plots():
+        """Update all plot lines."""
+        for i, joint_name in enumerate(joint_names):
+            for side in ["left", "right"]:
+                col = 0 if side == "left" else 1
+                key = f"{side}_{joint_name.lower().replace(' ', '_')}"
 
-    ax[1, 0].set_title("Left Hip Roll")
-    ax[1, 0].set_xlabel("Time Step")
-    ax[1, 0].set_ylabel("Angle (rad)")
-    ax[1, 0].legend()
-    ax[1, 0].set_ylim(-1.5, 1.5)
-    ax[1, 0].grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
+                target_queue = joint_data[f"{key}_target"]
+                current_queue = joint_data[f"{key}_current"]
 
-    ax[1, 1].set_title("Right Hip Roll")
-    ax[1, 1].set_xlabel("Time Step")
-    ax[1, 1].set_ylabel("Angle (rad)")
-    ax[1, 1].legend()
-    ax[1, 1].set_ylim(-1.5, 1.5)
-    ax[1, 1].grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
+                if target_queue:
+                    # Update action line
+                    lines[f"{key}_target"].set_xdata(range(len(target_queue)))
+                    lines[f"{key}_target"].set_ydata(target_queue)
 
-    ax[2, 0].set_title("Left Hip Yaw")
-    ax[2, 0].set_xlabel("Time Step")
-    ax[2, 0].set_ylabel("Angle (rad)")
-    ax[2, 0].legend()
-    ax[2, 0].set_ylim(-1.5, 1.5)
-    ax[2, 0].grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
+                    # Update position line
+                    lines[f"{key}_current"].set_xdata(range(len(current_queue)))
+                    lines[f"{key}_current"].set_ydata(current_queue)
 
-    ax[2, 1].set_title("Right Hip Yaw")
-    ax[2, 1].set_xlabel("Time Step")
-    ax[2, 1].set_ylabel("Angle (rad)")
-    ax[2, 1].legend()
-    ax[2, 1].set_ylim(-1.5, 1.5)
-    ax[2, 1].grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
+                    # Update axes
+                    ax[i, col].relim()
+                    ax[i, col].autoscale_view()
 
-    ax[3, 0].set_title("Left Knee")
-    ax[3, 0].set_xlabel("Time Step")
-    ax[3, 0].set_ylabel("Angle (rad)")
-    ax[3, 0].legend()
-    ax[3, 0].set_ylim(-1.5, 1.5)
-    ax[3, 0].grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
-
-    ax[3, 1].set_title("Right Knee")
-    ax[3, 1].set_xlabel("Time Step")
-    ax[3, 1].set_ylabel("Angle (rad)")
-    ax[3, 1].legend()
-    ax[3, 1].set_ylim(-1.5, 1.5)
-    ax[3, 1].grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
-
+    # Main loop
     while True:
-        # clear the plot if the queue is empty
+        # Process queue data
         while not queue.empty():
-            (
-                left_hip_pitch_action,
-                left_hip_pitch_pos,
-                right_hip_pitch_action,
-                right_hip_pitch_pos,
-                left_hip_roll_action,
-                left_hip_roll_pos,
-                right_hip_roll_action,
-                right_hip_roll_pos,
-                left_hip_yaw_action,
-                left_hip_yaw_pos,
-                right_hip_yaw_action,
-                right_hip_yaw_pos,
-                left_knee_action,
-                left_knee_pos,
-                right_knee_action,
-                right_knee_pos,
-            ) = queue.get()
+            data_tuple = queue.get()
+            _update_joint_data(data_tuple)
 
-            if left_hip_pitch_action is None:
-                left_hip_pitch_action_queue.clear()
-                left_hip_pitch_pos_queue.clear()
-            else:
-                left_hip_pitch_action_queue.append(left_hip_pitch_action)
-                left_hip_pitch_pos_queue.append(left_hip_pitch_pos)
+        # Update plots
+        _update_plots()
 
-            if right_hip_pitch_action is None:
-                right_hip_pitch_action_queue.clear()
-                right_hip_pitch_pos_queue.clear()
-            else:
-                right_hip_pitch_action_queue.append(right_hip_pitch_action)
-                right_hip_pitch_pos_queue.append(right_hip_pitch_pos)
-
-            if left_hip_roll_action is None:
-                left_hip_roll_action_queue.clear()
-                left_hip_roll_pos_queue.clear()
-            else:
-                left_hip_roll_action_queue.append(left_hip_roll_action)
-                left_hip_roll_pos_queue.append(left_hip_roll_pos)
-
-            if right_hip_roll_action is None:
-                right_hip_roll_action_queue.clear()
-                right_hip_roll_pos_queue.clear()
-            else:
-                right_hip_roll_action_queue.append(right_hip_roll_action)
-                right_hip_roll_pos_queue.append(right_hip_roll_pos)
-
-            if left_hip_yaw_action is None:
-                left_hip_yaw_action_queue.clear()
-                left_hip_yaw_pos_queue.clear()
-            else:
-                left_hip_yaw_action_queue.append(left_hip_yaw_action)
-                left_hip_yaw_pos_queue.append(left_hip_yaw_pos)
-
-            if right_hip_yaw_action is None:
-                right_hip_yaw_action_queue.clear()
-                right_hip_yaw_pos_queue.clear()
-            else:
-                right_hip_yaw_action_queue.append(right_hip_yaw_action)
-                right_hip_yaw_pos_queue.append(right_hip_yaw_pos)
-
-            if left_knee_action is None:
-                left_knee_action_queue.clear()
-                left_knee_pos_queue.clear()
-            else:
-                left_knee_action_queue.append(left_knee_action)
-                left_knee_pos_queue.append(left_knee_pos)
-
-            if right_knee_action is None:
-                right_knee_action_queue.clear()
-                right_knee_pos_queue.clear()
-            else:
-                right_knee_action_queue.append(right_knee_action)
-                right_knee_pos_queue.append(right_knee_pos)
-
-        if left_hip_pitch_action_queue:
-            line_left_hip_pitch.set_xdata(range(len(left_hip_pitch_action_queue)))
-            line_left_hip_pitch.set_ydata(left_hip_pitch_action_queue)
-            line_left_hip_pitch_pos.set_xdata(range(len(left_hip_pitch_pos_queue)))
-            line_left_hip_pitch_pos.set_ydata(left_hip_pitch_pos_queue)
-
-            ax[0, 0].relim()
-            ax[0, 0].autoscale_view()
-
-        if right_hip_pitch_action_queue:
-            line_right_hip_pitch.set_xdata(range(len(right_hip_pitch_action_queue)))
-            line_right_hip_pitch.set_ydata(right_hip_pitch_action_queue)
-            line_right_hip_pitch_pos.set_xdata(range(len(right_hip_pitch_pos_queue)))
-            line_right_hip_pitch_pos.set_ydata(right_hip_pitch_pos_queue)
-
-            ax[0, 1].relim()
-            ax[0, 1].autoscale_view()
-
-        if left_hip_roll_action_queue:
-            line_left_hip_roll.set_xdata(range(len(left_hip_roll_action_queue)))
-            line_left_hip_roll.set_ydata(left_hip_roll_action_queue)
-            line_left_hip_roll_pos.set_xdata(range(len(left_hip_roll_pos_queue)))
-            line_left_hip_roll_pos.set_ydata(left_hip_roll_pos_queue)
-
-            ax[1, 0].relim()
-            ax[1, 0].autoscale_view()
-
-        if right_hip_roll_action_queue:
-            line_right_hip_roll.set_xdata(range(len(right_hip_roll_action_queue)))
-            line_right_hip_roll.set_ydata(right_hip_roll_action_queue)
-            line_right_hip_roll_pos.set_xdata(range(len(right_hip_roll_pos_queue)))
-            line_right_hip_roll_pos.set_ydata(right_hip_roll_pos_queue)
-
-            ax[1, 1].relim()
-            ax[1, 1].autoscale_view()
-
-        if left_hip_yaw_action_queue:
-            line_left_hip_yaw.set_xdata(range(len(left_hip_yaw_action_queue)))
-            line_left_hip_yaw.set_ydata(left_hip_yaw_action_queue)
-            line_left_hip_yaw_pos.set_xdata(range(len(left_hip_yaw_pos_queue)))
-            line_left_hip_yaw_pos.set_ydata(left_hip_yaw_pos_queue)
-
-            ax[2, 0].relim()
-            ax[2, 0].autoscale_view()
-
-        if right_hip_yaw_action_queue:
-            line_right_hip_yaw.set_xdata(range(len(right_hip_yaw_action_queue)))
-            line_right_hip_yaw.set_ydata(right_hip_yaw_action_queue)
-            line_right_hip_yaw_pos.set_xdata(range(len(right_hip_yaw_pos_queue)))
-            line_right_hip_yaw_pos.set_ydata(right_hip_yaw_pos_queue)
-
-            ax[2, 1].relim()
-            ax[2, 1].autoscale_view()
-
-        if left_knee_action_queue:
-            line_left_knee.set_xdata(range(len(left_knee_action_queue)))
-            line_left_knee.set_ydata(left_knee_action_queue)
-            line_left_knee_pos.set_xdata(range(len(left_knee_pos_queue)))
-            line_left_knee_pos.set_ydata(left_knee_pos_queue)
-
-            ax[3, 0].relim()
-            ax[3, 0].autoscale_view()
-
-        if right_knee_action_queue:
-            line_right_knee.set_xdata(range(len(right_knee_action_queue)))
-            line_right_knee.set_ydata(right_knee_action_queue)
-            line_right_knee_pos.set_xdata(range(len(right_knee_pos_queue)))
-            line_right_knee_pos.set_ydata(right_knee_pos_queue)
-
-            ax[3, 1].relim()
-            ax[3, 1].autoscale_view()
-
+        # Refresh display
         fig.canvas.draw()
         fig.canvas.flush_events()
         plt.tight_layout()
+        time.sleep(0.02)
 
-        time.sleep(0.01)  # Add a small sleep to prevent high CPU usage
 
+def _configure_subplot(subplot, title, ylim):
+    """Configure a subplot with common settings."""
+    subplot.set_title(title)
+    subplot.set_xlabel("Time Step")
+    subplot.set_ylabel("Angle (rad)")
+    subplot.legend()
+    subplot.set_ylim(ylim)
+    subplot.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
 
-# Start the plotting function in a separate process
-queue = mp.Queue()
-mp_plot = mp.Process(target=_plot_joint_visualization, args=(queue,))
-mp_plot.start()
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
@@ -465,6 +360,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
     dt = env.unwrapped.step_dt
+    print(f"[INFO] Environment step dt: {dt:.4f} seconds.")
+
+    if args_cli.plot:
+        # Start the plotting function in a separate process
+        queue = mp.Queue()
+        mp_plot = mp.Process(target=_plot_joint_visualization, args=(queue,))
+        mp_plot.start()
+
+    # initialize UDP socket for publishing actions
+    udp_socket = None
+    if args_cli.enable_udp:
+        try:
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print(f"[INFO] UDP socket initialized. Publishing to {args_cli.udp_host}:{args_cli.udp_port}")
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize UDP socket: {e}")
+            udp_socket = None
 
     # reset environment
     obs = env.get_observations()
@@ -479,32 +391,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         # vcc.update_view_to_env()
         vcc.update_view_location(eye=[2.0, 2.0, 0.5], lookat=[0.0, 0.0, 0.0])
 
-    default_joint_pos = np.array(
-        [
-            0.52,
-            -0.52,
-            -0.05,
-            0.05,
-            -0.35,
-            0.35,
-            0.785,
-            0.785,
-            -0.436,
-            -0.436,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.13,
-            -0.13,
-            -0.13,
-            0.13,
-            -0.52,
-            -0.52,
-        ],
-        dtype=np.float32,
-    )
-
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -514,10 +400,25 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             actions = policy(obs)
             # env stepping
             obs, _, dones, _ = env.step(actions)
-            # from IPython import embed; embed()
             obs_numpy = obs["policy"].detach().cpu().numpy()[0]
-            obs_pos_numpy = obs_numpy[obs_pos_idx : obs_pos_idx + 20] + default_joint_pos
-            actions_numpy = actions.detach().cpu().numpy()[0] * 0.25 + default_joint_pos
+            obs_pos_numpy = obs_numpy[obs_pos_idx : obs_pos_idx + 20]
+
+            actions_numpy = actions.detach().cpu().numpy()[0] * 0.5
+            actions_publish = actions.detach().cpu().numpy()[:12]
+
+            # actions_publish = obs["policy"].detach().cpu().numpy()[:, obs_pos_idx : obs_pos_idx + 12]
+
+            # publish actions via UDP
+            if udp_socket is not None and args_cli.enable_udp:
+                try:
+                    # create data payload
+                    data_payload = {"timestamp": time.time(), "timestep": timestep, "actions": actions_publish.tolist()}
+
+                    # convert to JSON and send via UDP
+                    json_data = json.dumps(data_payload)
+                    udp_socket.sendto(json_data.encode("utf-8"), (args_cli.udp_host, args_cli.udp_port))
+                except Exception as e:
+                    print(f"[WARNING] Failed to send UDP data: {e}")
 
             # reset recurrent states for episodes that have terminated
             if version.parse(installed_version) >= version.parse("4.0.0"):
@@ -525,45 +426,56 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             else:
                 policy_nn.reset(dones)
 
-        queue.put((
-            actions_numpy[0],  # left_hip_pitch_action
-            obs_pos_numpy[0],  # left_hip_pitch_pos
-            actions_numpy[1],  # right_hip_pitch_action
-            obs_pos_numpy[1],  # right_hip_pitch_pos
-            actions_numpy[2],  # left_hip_roll_action
-            obs_pos_numpy[2],  # left_hip_roll_pos
-            actions_numpy[3],  # right_hip_roll_action
-            obs_pos_numpy[3],  # right_hip_roll_pos
-            actions_numpy[4],  # left_hip_yaw_action
-            obs_pos_numpy[4],  # left_hip_yaw_pos
-            actions_numpy[5],  # right_hip_yaw_action
-            obs_pos_numpy[5],  # right_hip_yaw_pos
-            actions_numpy[6],  # left_knee_action
-            obs_pos_numpy[6],  # left_knee_pos
-            actions_numpy[7],  # right_knee_action
-            obs_pos_numpy[7],  # right_knee_pos
-        ))
+            if args_cli.plot:
+                queue.put((
+                    actions_numpy[0],  # left_hip_pitch_action
+                    obs_pos_numpy[0],  # left_hip_pitch_pos
+                    actions_numpy[1],  # right_hip_pitch_action
+                    obs_pos_numpy[1],  # right_hip_pitch_pos
+                    actions_numpy[2],  # left_hip_roll_action
+                    obs_pos_numpy[2],  # left_hip_roll_pos
+                    actions_numpy[3],  # right_hip_roll_action
+                    obs_pos_numpy[3],  # right_hip_roll_pos
+                    actions_numpy[4],  # left_hip_yaw_action
+                    obs_pos_numpy[4],  # left_hip_yaw_pos
+                    actions_numpy[5],  # right_hip_yaw_action
+                    obs_pos_numpy[5],  # right_hip_yaw_pos
+                    actions_numpy[6],  # left_knee_action
+                    obs_pos_numpy[6],  # left_knee_pos
+                    actions_numpy[7],  # right_knee_action
+                    obs_pos_numpy[7],  # right_knee_pos
+                    actions_numpy[8],  # left_ankle_pitch_action
+                    obs_pos_numpy[8],  # left_ankle_pitch_pos
+                    actions_numpy[9],  # right_ankle_pitch_action
+                    obs_pos_numpy[9],  # right_ankle_pitch_pos
+                    actions_numpy[10],  # left_ankle_roll_action
+                    obs_pos_numpy[10],  # left_ankle_roll_pos
+                    actions_numpy[11],  # right_ankle_roll_action
+                    obs_pos_numpy[11],  # right_ankle_roll_pos
+                    actions_numpy[12],  # left_shoulder_pitch_action
+                    obs_pos_numpy[12],  # left_shoulder_pitch_pos
+                    actions_numpy[13],  # right_shoulder_pitch_action
+                    obs_pos_numpy[13],  # right_shoulder_pitch_pos
+                    actions_numpy[14],  # left_shoulder_roll_action
+                    obs_pos_numpy[14],  # left_shoulder_roll_pos
+                    actions_numpy[15],  # right_shoulder_roll_action
+                    obs_pos_numpy[15],  # right_shoulder_roll_pos
+                    actions_numpy[16],  # left_shoulder_yaw_action
+                    obs_pos_numpy[16],  # left_shoulder_yaw_pos
+                    actions_numpy[17],  # right_shoulder_yaw_action
+                    obs_pos_numpy[17],  # right_shoulder_yaw_pos
+                    actions_numpy[18],  # left_elbow_action
+                    obs_pos_numpy[18],  # left_elbow_pos
+                    actions_numpy[19],  # right_elbow_action
+                    obs_pos_numpy[19],  # right_elbow_pos
+                ))
 
         done_env_ids = dones.nonzero(as_tuple=False).flatten()
+
         if done_env_ids.shape[0] > 0:
-            queue.put((
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-            ))
+            if args_cli.plot:
+                none_tuple = (None,) * 40
+                queue.put(none_tuple)
 
         timestep += 1
 
@@ -576,6 +488,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         sleep_time = dt - (time.time() - start_time)
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
+
+        # print the frequency in this loop
+        end_time = time.time()
+        loop_dt = end_time - start_time
+        loop_freq = 1.0 / loop_dt if loop_dt > 0 else float("inf")
+        print(f"[INFO] Timestep: {timestep}, Loop Frequency: {loop_freq:.2f} Hz")
+
+    # close UDP socket if initialized
+    if udp_socket is not None:
+        udp_socket.close()
+        print("[INFO] UDP socket closed.")
 
     # close the simulator
     env.close()
