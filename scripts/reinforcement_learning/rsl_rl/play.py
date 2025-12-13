@@ -160,47 +160,12 @@ def _plot_joint_visualization(queue) -> None:
 
     def _update_joint_data(data_tuple):
         """Update joint data from queue data."""
+        # Generate data keys programmatically from joint names
         data_keys = [
-            "left_hip_pitch_target",
-            "left_hip_pitch_current",
-            "right_hip_pitch_target",
-            "right_hip_pitch_current",
-            "left_hip_roll_target",
-            "left_hip_roll_current",
-            "right_hip_roll_target",
-            "right_hip_roll_current",
-            "left_hip_yaw_target",
-            "left_hip_yaw_current",
-            "right_hip_yaw_target",
-            "right_hip_yaw_current",
-            "left_knee_target",
-            "left_knee_current",
-            "right_knee_target",
-            "right_knee_current",
-            "left_ankle_pitch_target",
-            "left_ankle_pitch_current",
-            "right_ankle_pitch_target",
-            "right_ankle_pitch_current",
-            "left_ankle_roll_target",
-            "left_ankle_roll_current",
-            "right_ankle_roll_target",
-            "right_ankle_roll_current",
-            "left_shoulder_pitch_target",
-            "left_shoulder_pitch_current",
-            "right_shoulder_pitch_target",
-            "right_shoulder_pitch_current",
-            "left_shoulder_roll_target",
-            "left_shoulder_roll_current",
-            "right_shoulder_roll_target",
-            "right_shoulder_roll_current",
-            "left_shoulder_yaw_target",
-            "left_shoulder_yaw_current",
-            "right_shoulder_yaw_target",
-            "right_shoulder_yaw_current",
-            "left_elbow_target",
-            "left_elbow_current",
-            "right_elbow_target",
-            "right_elbow_current",
+            f"{side}_{joint_name.lower().replace(' ', '_')}_{suffix}"
+            for joint_name in joint_names
+            for side in ["left", "right"]
+            for suffix in ["target", "current"]
         ]
 
         for i, key in enumerate(data_keys):
@@ -258,7 +223,6 @@ def _configure_subplot(subplot, title, ylim):
     subplot.legend()
     subplot.set_ylim(ylim)
     subplot.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
-
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
@@ -430,48 +394,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 policy_nn.reset(dones)
 
             if args_cli.plot:
-                queue.put((
-                    actions_numpy[0],  # left_hip_pitch_action
-                    obs_pos_numpy[0],  # left_hip_pitch_pos
-                    actions_numpy[1],  # right_hip_pitch_action
-                    obs_pos_numpy[1],  # right_hip_pitch_pos
-                    actions_numpy[2],  # left_hip_roll_action
-                    obs_pos_numpy[2],  # left_hip_roll_pos
-                    actions_numpy[3],  # right_hip_roll_action
-                    obs_pos_numpy[3],  # right_hip_roll_pos
-                    actions_numpy[4],  # left_hip_yaw_action
-                    obs_pos_numpy[4],  # left_hip_yaw_pos
-                    actions_numpy[5],  # right_hip_yaw_action
-                    obs_pos_numpy[5],  # right_hip_yaw_pos
-                    actions_numpy[6],  # left_knee_action
-                    obs_pos_numpy[6],  # left_knee_pos
-                    actions_numpy[7],  # right_knee_action
-                    obs_pos_numpy[7],  # right_knee_pos
-                    actions_numpy[8],  # left_ankle_pitch_action
-                    obs_pos_numpy[8],  # left_ankle_pitch_pos
-                    actions_numpy[9],  # right_ankle_pitch_action
-                    obs_pos_numpy[9],  # right_ankle_pitch_pos
-                    actions_numpy[10],  # left_ankle_roll_action
-                    obs_pos_numpy[10],  # left_ankle_roll_pos
-                    actions_numpy[11],  # right_ankle_roll_action
-                    obs_pos_numpy[11],  # right_ankle_roll_pos
-                    actions_numpy[12],  # left_shoulder_pitch_action
-                    obs_pos_numpy[12],  # left_shoulder_pitch_pos
-                    actions_numpy[13],  # right_shoulder_pitch_action
-                    obs_pos_numpy[13],  # right_shoulder_pitch_pos
-                    actions_numpy[14],  # left_shoulder_roll_action
-                    obs_pos_numpy[14],  # left_shoulder_roll_pos
-                    actions_numpy[15],  # right_shoulder_roll_action
-                    obs_pos_numpy[15],  # right_shoulder_roll_pos
-                    actions_numpy[16],  # left_shoulder_yaw_action
-                    obs_pos_numpy[16],  # left_shoulder_yaw_pos
-                    actions_numpy[17],  # right_shoulder_yaw_action
-                    obs_pos_numpy[17],  # right_shoulder_yaw_pos
-                    actions_numpy[18],  # left_elbow_action
-                    obs_pos_numpy[18],  # left_elbow_pos
-                    actions_numpy[19],  # right_elbow_action
-                    obs_pos_numpy[19],  # right_elbow_pos
-                ))
+                # Interleave actions and positions for all 20 joints
+                joint_data = tuple(value for i in range(20) for value in (actions_numpy[i], obs_pos_numpy[i]))
+                queue.put(joint_data)
 
         done_env_ids = dones.nonzero(as_tuple=False).flatten()
 
