@@ -24,22 +24,31 @@ class NXPFlatEnvCfg(NXPRoughEnvCfg):
         self.scene.height_scanner = None
         self.observations.policy.height_scan = None
 
+        # enable domain randomization
+        self.observations.policy.enable_corruption = True
+
         # no terrain curriculum
         self.curriculum.terrain_levels = None
 
         # Randomization
-        self.events.add_base_mass.params["mass_distribution_params"] = (-3.0, 3.0)
+
+        # physics material
+        self.events.physics_material.params["static_friction_range"] = (0.2, 1.25)
+        self.events.physics_material.params["dynamic_friction_range"] = (0.2, 1.25)
+        self.events.physics_material.params["restitution_range"] = (0.0, 0.1)
+
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
-                "x": (-0.1, 0.1),
-                "y": (-0.1, 0.1),
-                "z": (-0.1, 0.1),
-                "roll": (-0.1, 0.1),
-                "pitch": (-0.1, 0.1),
-                "yaw": (-0.1, 0.1),
+                "x": (-0.2, 0.2),
+                "y": (-0.2, 0.2),
+                "z": (-0.2, 0.2),
+                "roll": (-0.2, 0.2),
+                "pitch": (-0.2, 0.2),
+                "yaw": (-0.2, 0.2),
             },
         }
+        self.events.reset_robot_joints.params["position_range"] = (-0.9, 1.1)
         self.events.push_robot.params["velocity_range"] = {
             "x": (-0.5, 0.5),
             "y": (-0.5, 0.5),
