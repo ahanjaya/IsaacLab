@@ -5,14 +5,15 @@
 
 from __future__ import annotations
 
-import git
 import importlib
 import os
 import pathlib
 import torch
 import warnings
+from collections.abc import Callable
 from tensordict import TensorDict
-from typing import Callable
+
+import git
 
 
 def resolve_nn_activation(act_name: str) -> torch.nn.Module:

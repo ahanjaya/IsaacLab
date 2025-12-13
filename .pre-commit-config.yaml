@@ -66,7 +66,7 @@ repos:
           - --license-filepath
           - .github/LICENSE_HEADER.txt
           - --use-current-year
-        exclude: "source/isaaclab_mimic/|scripts/imitation_learning/isaaclab_mimic/"
+        exclude: "source/isaaclab_mimic/|scripts/imitation_learning/isaaclab_mimic/|rsl_rl-3.1.2/"
   # Apache 2.0 license for mimic files
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.1

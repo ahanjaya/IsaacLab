@@ -85,7 +85,7 @@ class PPO:
             # Check valid configuration
             if not callable(symmetry_cfg["data_augmentation_func"]):
                 raise ValueError(
-                    f"Symmetry configuration exists but the function is not callable: "
+                    "Symmetry configuration exists but the function is not callable: "
                     f"{symmetry_cfg['data_augmentation_func']}"
                 )
             # Check if the policy is compatible with symmetry

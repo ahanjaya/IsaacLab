@@ -3,6 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+# isort: skip_file
+
 """Implementation of runners for environment-agent interaction."""
 
 from .on_policy_runner import OnPolicyRunner  # noqa: I001
