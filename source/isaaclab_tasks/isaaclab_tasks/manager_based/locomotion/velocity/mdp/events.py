@@ -1,23 +1,28 @@
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
 from __future__ import annotations
 
 import torch
 from typing import TYPE_CHECKING, Literal
 
 from isaaclab.assets import Articulation
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.envs.mdp.events import _randomize_prop_by_op
+from isaaclab.managers import SceneEntityCfg
 
 if TYPE_CHECKING:
     from omni.isaac.lab.envs import ManagerBasedEnv
 
 
 def randomize_joint_default_pos(
-        env: ManagerBasedEnv,
-        env_ids: torch.Tensor | None,
-        asset_cfg: SceneEntityCfg,
-        pos_distribution_params: tuple[float, float] | None = None,
-        operation: Literal["add", "scale", "abs"] = "abs",
-        distribution: Literal["uniform", "log_uniform", "gaussian"] = "uniform",
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    asset_cfg: SceneEntityCfg,
+    pos_distribution_params: tuple[float, float] | None = None,
+    operation: Literal["add", "scale", "abs"] = "abs",
+    distribution: Literal["uniform", "log_uniform", "gaussian"] = "uniform",
 ):
     """
     Randomize the joint default positions which may be different from URDF due to calibration errors.
@@ -46,7 +51,6 @@ def randomize_joint_default_pos(
         asset.data.default_joint_pos[env_ids, joint_ids] = pos
 
 
-
 def randomize_joint_friction_model(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor | None,
@@ -56,7 +60,7 @@ def randomize_joint_friction_model(
     distribution: Literal["uniform", "log_uniform", "gaussian"] = "uniform",
 ):
     """
-    Randomize the friction parameters used in joint friction model. 
+    Randomize the friction parameters used in joint friction model.
     """
     # extract the used quantities (to enable type-hinting)
     asset: Articulation = env.scene[asset_cfg.name]
@@ -79,13 +83,22 @@ def randomize_joint_friction_model(
             if sum(actuator_joint_ids) > 0:
                 friction = actuator.friction_static.to(asset.device).clone()
                 friction = _randomize_prop_by_op(
-                    friction, friction_distribution_params, env_ids, torch.arange(friction.shape[1]), operation=operation, distribution=distribution
+                    friction,
+                    friction_distribution_params,
+                    env_ids,
+                    torch.arange(friction.shape[1]),
+                    operation=operation,
+                    distribution=distribution,
                 )[env_ids][:, actuator_joint_ids]
                 actuator.friction_static[env_ids[:, None], actuator_joint_ids] = friction
 
                 friction = actuator.friction_dynamic.to(asset.device).clone()
                 friction = _randomize_prop_by_op(
-                    friction, friction_distribution_params, env_ids, torch.arange(friction.shape[1]), operation=operation, distribution=distribution
+                    friction,
+                    friction_distribution_params,
+                    env_ids,
+                    torch.arange(friction.shape[1]),
+                    operation=operation,
+                    distribution=distribution,
                 )[env_ids][:, actuator_joint_ids]
                 actuator.friction_dynamic[env_ids[:, None], actuator_joint_ids] = friction
-                
