@@ -11,7 +11,7 @@ import torch.optim as optim
 from itertools import chain
 from tensordict import TensorDict
 
-from rsl_rl.modules import ActorCritic, ActorCriticRecurrent
+from rsl_rl.modules import ActorCritic, ActorCriticRecurrent, LinVelEstimator
 from rsl_rl.modules.rnd import RandomNetworkDistillation
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import string_to_callable
@@ -26,6 +26,7 @@ class PPO:
     def __init__(
         self,
         policy: ActorCritic | ActorCriticRecurrent,
+        lin_vel_estimator: LinVelEstimator | None = None,
         num_learning_epochs: int = 5,
         num_mini_batches: int = 4,
         clip_param: float = 0.2,
@@ -100,8 +101,21 @@ class PPO:
         self.policy = policy
         self.policy.to(self.device)
 
+        # LinVelEstimator
+        self.lin_vel_estimator: LinVelEstimator | None = lin_vel_estimator
+        if self.lin_vel_estimator is not None:
+            self.lin_vel_estimator.to(self.device)
+
         # Create optimizer
         self.optimizer = optim.Adam(self.policy.parameters(), lr=learning_rate)
+
+        if self.lin_vel_estimator is not None:
+            self.lin_vel_estimator_optimizer = optim.Adam(
+                self.lin_vel_estimator.parameters(), lr=self.lin_vel_estimator.learning_rate
+            )
+
+        # Losses
+        self.l2_loss = nn.MSELoss()
 
         # Create rollout storage
         self.storage: RolloutStorage | None = None
@@ -143,6 +157,10 @@ class PPO:
     def act(self, obs: TensorDict) -> torch.Tensor:
         if self.policy.is_recurrent:
             self.transition.hidden_states = self.policy.get_hidden_states()
+
+        if self.lin_vel_estimator:
+            obs["estimated_lin_vel"] = self.lin_vel_estimator(obs["proprioceptive"]).detach()
+
         # Compute the actions and values
         self.transition.actions = self.policy.act(obs).detach()
         self.transition.values = self.policy.evaluate(obs).detach()
@@ -191,10 +209,12 @@ class PPO:
             last_values, self.gamma, self.lam, normalize_advantage=not self.normalize_advantage_per_mini_batch
         )
 
-    def update(self) -> dict[str, float]:
+    def update(self) -> dict[str, float]:  # noqa: C901
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
+        # Linear velocity estimator loss
+        mean_lin_vel_estimator_loss = 0 if self.lin_vel_estimator else None
         # RND loss
         mean_rnd_loss = 0 if self.rnd else None
         # Symmetry loss
@@ -244,6 +264,13 @@ class PPO:
                 target_values_batch = target_values_batch.repeat(num_aug, 1)
                 advantages_batch = advantages_batch.repeat(num_aug, 1)
                 returns_batch = returns_batch.repeat(num_aug, 1)
+
+            # -- Linear velocity estimator loss
+            if self.lin_vel_estimator:
+                estimated_lin_vel = self.lin_vel_estimator(obs_batch["proprioceptive"])
+                true_lin_vel = obs_batch["lin_vel"]
+                lin_vel_estimator_loss = self.l2_loss(estimated_lin_vel, true_lin_vel)
+                obs_batch["estimated_lin_vel"] = estimated_lin_vel.detach()
 
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: We need to do this because we updated the policy with the new parameters
@@ -363,6 +390,11 @@ class PPO:
             # Compute the gradients for PPO
             self.optimizer.zero_grad()
             loss.backward()
+
+            if self.lin_vel_estimator:
+                self.lin_vel_estimator.zero_grad()
+                lin_vel_estimator_loss.backward()
+
             # Compute the gradients for RND
             if self.rnd:
                 self.rnd_optimizer.zero_grad()
@@ -375,6 +407,12 @@ class PPO:
             # Apply the gradients for PPO
             nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.optimizer.step()
+
+            # Apply the gradients for LinVelEstimator
+            if self.lin_vel_estimator:
+                nn.utils.clip_grad_norm_(self.lin_vel_estimator.parameters(), 1.0)
+                self.lin_vel_estimator_optimizer.step()
+
             # Apply the gradients for RND
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
@@ -383,6 +421,9 @@ class PPO:
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
             mean_entropy += entropy_batch.mean().item()
+            # Linear velocity estimator loss
+            if mean_lin_vel_estimator_loss is not None:
+                mean_lin_vel_estimator_loss += lin_vel_estimator_loss.item()
             # RND loss
             if mean_rnd_loss is not None:
                 mean_rnd_loss += rnd_loss.item()
@@ -395,6 +436,8 @@ class PPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates
+        if mean_lin_vel_estimator_loss is not None:
+            mean_lin_vel_estimator_loss /= num_updates
         if mean_rnd_loss is not None:
             mean_rnd_loss /= num_updates
         if mean_symmetry_loss is not None:
@@ -409,6 +452,8 @@ class PPO:
             "surrogate": mean_surrogate_loss,
             "entropy": mean_entropy,
         }
+        if self.lin_vel_estimator:
+            loss_dict["lin_vel_estimator"] = mean_lin_vel_estimator_loss
         if self.rnd:
             loss_dict["rnd"] = mean_rnd_loss
         if self.symmetry:

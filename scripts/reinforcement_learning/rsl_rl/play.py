@@ -33,6 +33,7 @@ parser.add_argument(
     action="store_true",
     help="Use the pre-trained checkpoint from Nucleus.",
 )
+parser.add_argument("--use_jit", action="store_true", default=False, help="Use JIT policy module.")
 parser.add_argument("--plot", action="store_true", default=False, help="Plot robot joint actions and positions.")
 parser.add_argument("--real_time", action="store_true", default=False, help="Run in real-time.")
 parser.add_argument("--follow_robot", action="store_true", default=False, help="Follow the robot with the camera.")
@@ -82,11 +83,14 @@ from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 
-from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit, export_policy_as_onnx
+from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper, export_policy_as_jit
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
+
+# from isaaclab_rl.rsl_rl import export_policy_as_onnx
+
 
 np.set_printoptions(precision=4, suppress=True)
 
@@ -277,15 +281,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # obtain the trained policy for inference
     policy = runner.get_inference_policy(device=env.unwrapped.device)
+    lin_vel_estimator = runner.get_inference_linvel_estimator(device=env.unwrapped.device)
 
     # extract the neural network module
     # we do this in a try-except to maintain backwards compatibility.
     try:
         # version 2.3 onwards
         policy_nn = runner.alg.policy
+        lin_vel_estimator_nn = runner.alg.lin_vel_estimator
     except AttributeError:
         # version 2.2 and below
         policy_nn = runner.alg.actor_critic
+        lin_vel_estimator_nn = runner.alg.lin_vel_estimator
 
     # extract the normalizer
     if hasattr(policy_nn, "actor_obs_normalizer"):
@@ -297,8 +304,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # export policy to onnx/jit
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-    export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
-    export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+    export_policy_as_jit(
+        policy_nn, lin_vel_estimator_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt"
+    )
+    # export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+
+    if args_cli.use_jit:
+        # load the exported jit module
+        jit_policy_path = os.path.join(export_model_dir, "policy.pt")
+        policy = torch.jit.load(jit_policy_path, map_location=env.unwrapped.device)
+        print(f"[INFO] Loading JIT policy module from: {jit_policy_path}")
 
     dt = env.unwrapped.step_dt
     print(f"[INFO] Environment step dt: {dt:.4f} seconds.")
@@ -322,7 +337,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # reset environment
     obs = env.get_observations()
     timestep = 0
-    obs_pos_idx = 12
+    obs_pos_idx = 9
 
     # Set up viewport camera to track the robot
     if args_cli.follow_robot:
@@ -337,16 +352,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         start_time = time.time()
         # run everything in inference mode
         with torch.inference_mode():
-            # agent stepping
-            actions = policy(obs)
+            if args_cli.use_jit:
+                actions = policy(obs["proprioceptive"])
+            else:
+                # lin_vel_estimator
+                if lin_vel_estimator is not None:
+                    estimated_lin_vel = lin_vel_estimator(obs["proprioceptive"])
+                    obs["estimated_lin_vel"] = estimated_lin_vel.detach()
+                # agent stepping
+                actions = policy(obs)
+
             # env stepping
             obs, _, dones, _ = env.step(actions)
-            obs_numpy = obs["policy"].detach().cpu().numpy()[0]
+            obs_numpy = obs["proprioceptive"].detach().cpu().numpy()[0]
             obs_pos_numpy = obs_numpy[obs_pos_idx : obs_pos_idx + 20]
 
             actions_numpy = actions.detach().cpu().numpy()[0] * 0.5
             actions_publish = actions.detach().cpu().numpy()[:12]
-
             # actions_publish = obs["policy"].detach().cpu().numpy()[:, obs_pos_idx : obs_pos_idx + 12]
 
             # publish actions via UDP

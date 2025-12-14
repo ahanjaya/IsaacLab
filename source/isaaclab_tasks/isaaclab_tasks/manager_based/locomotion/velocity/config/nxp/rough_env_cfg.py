@@ -4,8 +4,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
+from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import SceneEntityCfg as SceneEntity
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
@@ -79,7 +81,7 @@ class NXPRewards(RewardsCfg):
         func=mdp.feet_air_time_berkeley,
         weight=2.0,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*ankle_roll_link"),
+            "sensor_cfg": SceneEntity("contact_forces", body_names=".*ankle_roll_link"),
             "command_name": "base_velocity",
             "threshold_min": 0.2,
             "threshold_max": 0.5,
@@ -89,8 +91,8 @@ class NXPRewards(RewardsCfg):
         func=mdp.feet_slide,
         weight=-0.1,
         params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
+            "sensor_cfg": SceneEntity("contact_forces", body_names=".*_ankle_roll_link"),
+            "asset_cfg": SceneEntity("robot", body_names=".*_ankle_roll_link"),
         },
     )
 
@@ -98,29 +100,96 @@ class NXPRewards(RewardsCfg):
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_joint"])},
+        params={"asset_cfg": SceneEntity("robot", joint_names=[".*_joint"])},
     )
     # Penalize deviation from default of the joints that are not essential for locomotion
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*"])},
+        params={"asset_cfg": SceneEntity("robot", joint_names=[".*_hip_.*"])},
     )
     joint_deviation_knee = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_knee_.*"])},
+        params={"asset_cfg": SceneEntity("robot", joint_names=[".*_knee_.*"])},
     )
     joint_deviation_ankle = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_.*"])},
+        params={"asset_cfg": SceneEntity("robot", joint_names=[".*_ankle_.*"])},
     )
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*"])},
+        params={"asset_cfg": SceneEntity("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*"])},
     )
+
+
+@configclass
+class NXPObervations:
+    """Observation specifications for the MDP."""
+
+    @configclass
+    class ProprioceptiveCfg(ObsGroup):
+        """Observations for proprioceptive group."""
+
+        # observation terms (order preserved)
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        actions = ObsTerm(func=mdp.last_action)
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    @configclass
+    class LinVelCfg(ObsGroup):
+        """Observations for lin_vel group."""
+
+        # observation terms (order preserved)
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    @configclass
+    class EstimatedLinVelCfg(ObsGroup):
+        """Observations for estimated_lin_vel group."""
+
+        # observation terms (order preserved)
+        estimated_lin_vel = ObsTerm(func=mdp.estimated_lin_vel)
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    # @configclass
+    # class HeightScanCfg(ObsGroup):
+    #     """Observations for height_scan group."""
+
+    #     height_scan = ObsTerm(
+    #         func=mdp.height_scan,
+    #         params={"sensor_cfg": SceneEntity("height_scanner")},
+    #         noise=Unoise(n_min=-0.1, n_max=0.1),
+    #         clip=(-1.0, 1.0),
+    #     )
+
+    #     def __post_init__(self):
+    #         self.enable_corruption = True
+    #         self.concatenate_terms = True
+
+    # observation groups
+    proprioceptive: ProprioceptiveCfg = ProprioceptiveCfg()
+    lin_vel: LinVelCfg = LinVelCfg()
+    estimated_lin_vel: EstimatedLinVelCfg = EstimatedLinVelCfg()
+    # height_scan: HeightScanCfg = HeightScanCfg()
 
 
 @configclass
@@ -134,7 +203,7 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_rigid_body_material,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "asset_cfg": SceneEntity("robot", body_names=".*"),
             "static_friction_range": (0.8, 0.8),
             "dynamic_friction_range": (0.6, 0.6),
             "restitution_range": (0.0, 0.0),
@@ -146,7 +215,7 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+            "asset_cfg": SceneEntity("robot", body_names="torso_link"),
             "mass_distribution_params": (-5.0, 5.0),
             "operation": "add",
         },
@@ -156,7 +225,7 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "asset_cfg": SceneEntity("robot", body_names=".*"),
             "mass_distribution_params": (0.9, 1.1),
             "operation": "scale",
         },
@@ -166,7 +235,7 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_rigid_body_com,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+            "asset_cfg": SceneEntity("robot", body_names="torso_link"),
             "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
         },
     )
@@ -175,7 +244,7 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_joint_parameters,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+            "asset_cfg": SceneEntity("robot", joint_names=[".*"]),
             "armature_distribution_params": (0.5, 1.5),
             "operation": "scale",
         },
@@ -185,7 +254,7 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_joint_default_pos,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+            "asset_cfg": SceneEntity("robot", joint_names=[".*"]),
             "pos_distribution_params": (-0.05, 0.05),
             "operation": "add",
         },
@@ -196,7 +265,7 @@ class NXPEvent(EventCfg):
     #     func=mdp.randomize_joint_friction_model,
     #     mode="startup",
     #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+    #         "asset_cfg": SceneEntity("robot", joint_names=[".*"]),
     #         "friction_distribution_params": (0.9, 1.1),
     #         "operation": "scale",
     #     },
@@ -207,7 +276,7 @@ class NXPEvent(EventCfg):
         func=mdp.apply_external_force_torque,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+            "asset_cfg": SceneEntity("robot", body_names="torso_link"),
             "force_range": (0.0, 0.0),
             "torque_range": (-0.0, 0.0),
         },
@@ -252,6 +321,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     actions: NXPActions = NXPActions()
     rewards: NXPRewards = NXPRewards()
     events: NXPEvent = NXPEvent()
+    observations: NXPObervations = NXPObervations()
 
     def __post_init__(self):
         # post init of parent
@@ -261,11 +331,11 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
 
         # Observation
-        self.observations.policy.joint_pos.params["asset_cfg"] = SceneEntityCfg(
+        self.observations.proprioceptive.joint_pos.params["asset_cfg"] = SceneEntity(
             "robot", joint_names=NXP_JOINT_NAMES, preserve_order=True
         )
-        self.observations.policy.joint_pos.noise = Unoise(n_min=-0.1, n_max=0.1)
-        self.observations.policy.joint_vel.params["asset_cfg"] = SceneEntityCfg(
+        self.observations.proprioceptive.joint_pos.noise = Unoise(n_min=-0.1, n_max=0.1)
+        self.observations.proprioceptive.joint_vel.params["asset_cfg"] = SceneEntity(
             "robot", joint_names=NXP_JOINT_NAMES, preserve_order=True
         )
 
@@ -300,12 +370,12 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.dof_pos_limits.weight = -1.0
         self.rewards.dof_acc_l2 = None
         self.rewards.dof_torques_l2.weight = -2.5e-5
-        self.rewards.dof_torques_l2.params["asset_cfg"] = SceneEntityCfg("robot", joint_names=[".*_joint"])
+        self.rewards.dof_torques_l2.params["asset_cfg"] = SceneEntity("robot", joint_names=[".*_joint"])
         self.rewards.action_rate_l2.weight = -0.01
         self.rewards.feet_air_time.weight = 0.5
         self.rewards.feet_slide.weight = -0.25
         self.rewards.undesired_contacts.weight = -1.0
-        self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntityCfg(
+        self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntity(
             "contact_forces",
             body_names=[".*_upper_arm_link", ".*_hip_yaw_link", "torso_link"],
         )

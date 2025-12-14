@@ -7,6 +7,7 @@
 
 from .actor_critic import ActorCritic
 from .actor_critic_recurrent import ActorCriticRecurrent
+from .lin_vel_estimator import LinVelEstimator
 from .rnd import RandomNetworkDistillation, resolve_rnd_config
 from .student_teacher import StudentTeacher
 from .student_teacher_recurrent import StudentTeacherRecurrent
@@ -16,6 +17,7 @@ __all__ = [
     "ActorCritic",
     "ActorCriticRecurrent",
     "RandomNetworkDistillation",
+    "LinVelEstimator",
     "StudentTeacher",
     "StudentTeacherRecurrent",
     "resolve_rnd_config",

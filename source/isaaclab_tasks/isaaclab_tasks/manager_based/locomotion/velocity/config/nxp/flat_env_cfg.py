@@ -22,10 +22,10 @@ class NXPFlatEnvCfg(NXPRoughEnvCfg):
 
         # no height scan
         self.scene.height_scanner = None
-        self.observations.policy.height_scan = None
 
         # enable domain randomization
-        self.observations.policy.enable_corruption = True
+        self.observations.proprioceptive.enable_corruption = True
+        self.observations.lin_vel.enable_corruption = True
 
         # no terrain curriculum
         self.curriculum.terrain_levels = None
@@ -84,10 +84,10 @@ class NXPFlatEnvCfg_PLAY(NXPFlatEnvCfg):
         self.events.push_robot = None
 
         # disable randomization for play
-        self.observations.policy.enable_corruption = False
+        self.observations.proprioceptive.enable_corruption = False
 
         # commands
-        self.use_teleop = False
+        self.use_teleop = True
         if not self.use_teleop:
             return
 

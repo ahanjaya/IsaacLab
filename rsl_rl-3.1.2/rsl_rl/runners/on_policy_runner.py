@@ -16,7 +16,13 @@ from tensordict import TensorDict
 import rsl_rl
 from rsl_rl.algorithms import PPO
 from rsl_rl.env import VecEnv
-from rsl_rl.modules import ActorCritic, ActorCriticRecurrent, resolve_rnd_config, resolve_symmetry_config
+from rsl_rl.modules import (
+    ActorCritic,
+    ActorCriticRecurrent,
+    LinVelEstimator,
+    resolve_rnd_config,
+    resolve_symmetry_config,
+)
 from rsl_rl.utils import resolve_obs_groups, store_code_state
 
 
@@ -27,6 +33,7 @@ class OnPolicyRunner:
         self.cfg = train_cfg
         self.alg_cfg = train_cfg["algorithm"]
         self.policy_cfg = train_cfg["policy"]
+        self.lin_vel_estimator_cfg = train_cfg.get("lin_vel_estimator")
         self.device = device
         self.env = env
 
@@ -296,6 +303,10 @@ class OnPolicyRunner:
             "iter": self.current_learning_iteration,
             "infos": infos,
         }
+        # Save lin vel estimator
+        if hasattr(self.alg, "lin_vel_estimator") and self.alg.lin_vel_estimator:
+            saved_dict["lin_vel_estimator_state_dict"] = self.alg.lin_vel_estimator.state_dict()
+            saved_dict["lin_vel_estimator_optimizer_state_dict"] = self.alg.lin_vel_estimator_optimizer.state_dict()
         # Save RND model if used
         if hasattr(self.alg, "rnd") and self.alg.rnd:
             saved_dict["rnd_state_dict"] = self.alg.rnd.state_dict()
@@ -310,6 +321,9 @@ class OnPolicyRunner:
         loaded_dict = torch.load(path, weights_only=False, map_location=map_location)
         # Load model
         resumed_training = self.alg.policy.load_state_dict(loaded_dict["model_state_dict"])
+        # Load lin vel estimator if used
+        if hasattr(self.alg, "lin_vel_estimator") and self.alg.lin_vel_estimator:
+            self.alg.lin_vel_estimator.load_state_dict(loaded_dict["lin_vel_estimator_state_dict"])
         # Load RND model if used
         if hasattr(self.alg, "rnd") and self.alg.rnd:
             self.alg.rnd.load_state_dict(loaded_dict["rnd_state_dict"])
@@ -317,6 +331,11 @@ class OnPolicyRunner:
         if load_optimizer and resumed_training:
             # Algorithm optimizer
             self.alg.optimizer.load_state_dict(loaded_dict["optimizer_state_dict"])
+            # Lin vel estimator if used
+            if hasattr(self.alg, "lin_vel_estimator") and self.alg.lin_vel_estimator:
+                self.alg.lin_vel_estimator_optimizer.load_state_dict(
+                    loaded_dict["lin_vel_estimator_optimizer_state_dict"]
+                )
             # RND optimizer if used
             if hasattr(self.alg, "rnd") and self.alg.rnd:
                 self.alg.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
@@ -331,9 +350,20 @@ class OnPolicyRunner:
             self.alg.policy.to(device)
         return self.alg.policy.act_inference
 
+    def get_inference_linvel_estimator(self, device: str | None = None) -> LinVelEstimator | None:
+        if not hasattr(self.alg, "lin_vel_estimator") or self.alg.lin_vel_estimator is None:
+            return None
+        self.eval_mode()  # Switch to evaluation mode (e.g. for dropout)
+        if device is not None:
+            self.alg.lin_vel_estimator.to(device)
+        return self.alg.lin_vel_estimator.act_inference
+
     def train_mode(self) -> None:
         # PPO
         self.alg.policy.train()
+        # LinVelEstimator
+        if hasattr(self.alg, "lin_vel_estimator") and self.alg.lin_vel_estimator:
+            self.alg.lin_vel_estimator.train()
         # RND
         if hasattr(self.alg, "rnd") and self.alg.rnd:
             self.alg.rnd.train()
@@ -341,6 +371,9 @@ class OnPolicyRunner:
     def eval_mode(self) -> None:
         # PPO
         self.alg.policy.eval()
+        # LinVelEstimator
+        if hasattr(self.alg, "lin_vel_estimator") and self.alg.lin_vel_estimator:
+            self.alg.lin_vel_estimator.eval()
         # RND
         if hasattr(self.alg, "rnd") and self.alg.rnd:
             self.alg.rnd.eval()
@@ -418,9 +451,19 @@ class OnPolicyRunner:
             obs, self.cfg["obs_groups"], self.env.num_actions, **self.policy_cfg
         ).to(self.device)
 
+        # Initialize the linear velocity estimator if specified
+        if self.lin_vel_estimator_cfg is not None:
+            lin_vel_estimator_cfg = self.lin_vel_estimator_cfg.copy()
+            lin_vel_estimator_cfg["input_dim"] = obs["proprioceptive"].shape[-1]
+            lin_vel_estimator: LinVelEstimator = LinVelEstimator(**lin_vel_estimator_cfg).to(self.device)
+        else:
+            lin_vel_estimator = None
+
         # Initialize the algorithm
         alg_class = eval(self.alg_cfg.pop("class_name"))
-        alg: PPO = alg_class(actor_critic, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg)
+        alg: PPO = alg_class(
+            actor_critic, lin_vel_estimator, device=self.device, **self.alg_cfg, multi_gpu_cfg=self.multi_gpu_cfg
+        )
 
         # Initialize the storage
         alg.init_storage(
