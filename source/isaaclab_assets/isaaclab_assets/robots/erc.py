@@ -64,7 +64,6 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
             "right_shoulder_yaw_joint": 0.1309,
             "left_elbow_joint": 0.1745,
             "right_elbow_joint": -0.1745,
-            "torso_yaw_joint": 0.0000,
             "head_pan_joint": 0.0000,
             "head_tilt_joint": 0.0000,
         },
@@ -89,7 +88,6 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
         #     "right_shoulder_yaw_joint": 0.0,
         #     "left_elbow_joint": 0.0,
         #     "right_elbow_joint": 0.0,
-        #     "torso_yaw_joint": 0.0,
         #     "head_pan_joint": 0.0,
         #     "head_tilt_joint": 0.0,
         # },
@@ -97,15 +95,6 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     actuators={
-        # "torso": DCMotorCfg(
-        #     joint_names_expr=["torso_yaw_joint"],
-        #     effort_limit=17.0,
-        #     saturation_effort=17.0,
-        #     velocity_limit=33.93,
-        #     stiffness=30.0,
-        #     damping=1.5,
-        #     armature=0.1,
-        # ),
         # "hip_pitch": DCMotorCfg(
         #     joint_names_expr=[".*_hip_pitch_.*"],
         #     effort_limit=120.0,
@@ -218,13 +207,6 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
             effort_limit_sim=150.0,
             stiffness=150.0,
             damping=5.0,
-            armature=0.1,
-        ),
-        "torso": ImplicitActuatorCfg(
-            joint_names_expr=["torso_yaw_joint"],
-            effort_limit_sim=30.0,
-            stiffness=30.0,
-            damping=1.0,
             armature=0.1,
         ),
         "shoulder_pitch": ImplicitActuatorCfg(
