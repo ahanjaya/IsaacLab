@@ -215,7 +215,7 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
         params={
-            "asset_cfg": SceneEntity("robot", body_names="torso_link"),
+            "asset_cfg": SceneEntity("robot", body_names="pelvis_link"),
             "mass_distribution_params": (-5.0, 5.0),
             "operation": "add",
         },
@@ -235,7 +235,7 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_rigid_body_com,
         mode="startup",
         params={
-            "asset_cfg": SceneEntity("robot", body_names="torso_link"),
+            "asset_cfg": SceneEntity("robot", body_names="pelvis_link"),
             "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
         },
     )
@@ -276,7 +276,7 @@ class NXPEvent(EventCfg):
         func=mdp.apply_external_force_torque,
         mode="reset",
         params={
-            "asset_cfg": SceneEntity("robot", body_names="torso_link"),
+            "asset_cfg": SceneEntity("robot", body_names="pelvis_link"),
             "force_range": (0.0, 0.0),
             "torque_range": (-0.0, 0.0),
         },
@@ -328,7 +328,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         super().__post_init__()
         # Scene
         self.scene.robot = NXP_V1_HUMANOID_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/torso_link"
+        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/pelvis_link"
 
         # Observation
         self.observations.proprioceptive.joint_pos.params["asset_cfg"] = SceneEntity(
@@ -377,7 +377,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.undesired_contacts.weight = -1.0
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntity(
             "contact_forces",
-            body_names=[".*_upper_arm_link", ".*_hip_yaw_link", "torso_link"],
+            body_names=[".*_upper_arm_link", ".*_hip_yaw_link", "pelvis_link"],
         )
         self.rewards.joint_deviation_hip.weight = -0.1
         self.rewards.joint_deviation_knee.weight = -0.01
@@ -390,7 +390,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = "torso_link"
+        self.terminations.base_contact.params["sensor_cfg"].body_names = "pelvis_link"
 
 
 @configclass
