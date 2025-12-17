@@ -28,6 +28,7 @@ from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="This script demonstrates nxp v1 humanoid robot.")
+parser.add_argument("--plot", action="store_true", default=False, help="Plot robot joint actions and positions.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -60,6 +61,7 @@ class RobotState(Enum):
     RESET = 1
     SQUAT = 2
     STRAIGHT = 3
+    INFERENCE = 4
 
 
 def design_scene() -> Articulation:
@@ -215,32 +217,31 @@ def run_simulator(sim: sim_utils.SimulationContext, entity: Articulation):
     # print(f"[INFO]: Robot Joint Names: {entity.data.joint_names}")
     # print(f"[INFO]: Robot Default Joint Pos: {entity.data.default_joint_pos}")
 
-    default_pose = entity.data.default_joint_pos.clone()
-    squad_pose = torch.tensor(
+    default_pose = entity.data.default_joint_pos.clone() * 0.0
+    squat_pose = torch.tensor(
         [[
-            0.5200,
-            -0.5200,
             0.0000,
-            0.15,
-            -0.15,
+            0.1309,
             0.0000,
+            -0.1309,
             0.0000,
             0.0000,
-            -0.3500,
-            0.3500,
-            0.0000,
-            -0.1300,
-            0.1300,
-            -0.7850,
-            0.7850,
-            -0.1300,
-            0.1300,
-            0.4360,
-            -0.4360,
-            0.5200,
-            -0.5200,
-            -0.2000,
-            0.2000,
+            -0.0174,
+            -0.0436,
+            0.0174,
+            0.0436,
+            -0.0872,
+            -0.1309,
+            0.0872,
+            0.1309,
+            -0.1745,
+            0.1745,
+            0.1745,
+            -0.1745,
+            0.0872,
+            -0.0872,
+            -0.0174,
+            0.0174,
         ]],
         device="cuda:0",
     )
@@ -258,41 +259,42 @@ def run_simulator(sim: sim_utils.SimulationContext, entity: Articulation):
     squat_count = 0
     straight_count = 0
 
-    # Joint names for NXP humanoid
-    lower_body_joint_names = [
-        "left_hip_pitch_joint",
-        "right_hip_pitch_joint",
-        "left_hip_roll_joint",
-        "right_hip_roll_joint",
-        "left_hip_yaw_joint",
-        "right_hip_yaw_joint",
-        "left_knee_joint",
-        "right_knee_joint",
-        "left_ankle_pitch_joint",
-        "right_ankle_pitch_joint",
-        "left_ankle_roll_joint",
-        "right_ankle_roll_joint",
-    ]
+    if args_cli.plot:
+        # Joint names for NXP humanoid
+        lower_body_joint_names = [
+            "left_hip_pitch_joint",
+            "right_hip_pitch_joint",
+            "left_hip_roll_joint",
+            "right_hip_roll_joint",
+            "left_hip_yaw_joint",
+            "right_hip_yaw_joint",
+            "left_knee_joint",
+            "right_knee_joint",
+            "left_ankle_pitch_joint",
+            "right_ankle_pitch_joint",
+            "left_ankle_roll_joint",
+            "right_ankle_roll_joint",
+        ]
 
-    # upper_body_joint_names = [
-    #     "left_shoulder_pitch_joint",
-    #     "right_shoulder_pitch_joint",
-    #     "left_shoulder_roll_joint",
-    #     "right_shoulder_roll_joint",
-    #     "left_shoulder_yaw_joint",
-    #     "right_shoulder_yaw_joint",
-    #     "left_elbow_joint",
-    #     "right_elbow_joint",
-    # ]
+        # upper_body_joint_names = [
+        #     "left_shoulder_pitch_joint",
+        #     "right_shoulder_pitch_joint",
+        #     "left_shoulder_roll_joint",
+        #     "right_shoulder_roll_joint",
+        #     "left_shoulder_yaw_joint",
+        #     "right_shoulder_yaw_joint",
+        #     "left_elbow_joint",
+        #     "right_elbow_joint",
+        # ]
 
-    # get real_indices of the nxp joints
-    lower_body_indices = [entity.data.joint_names.index(name) for name in lower_body_joint_names]
-    # upper_body_indices = [entity.data.joint_names.index(name) for name in upper_body_joint_names]
+        # get real_indices of the nxp joints
+        lower_body_indices = [entity.data.joint_names.index(name) for name in lower_body_joint_names]
+        # upper_body_indices = [entity.data.joint_names.index(name) for name in upper_body_joint_names]
 
-    # Start the plotting function in a separate process
-    queue = mp.Queue()
-    mp_plot = mp.Process(target=_plot_joint_visualization, args=(queue,))
-    mp_plot.start()
+        # Start the plotting function in a separate process
+        queue = mp.Queue()
+        mp_plot = mp.Process(target=_plot_joint_visualization, args=(queue,))
+        mp_plot.start()
 
     # Simulate physics
     while simulation_app.is_running():
@@ -334,7 +336,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entity: Articulation):
 
         elif current_state == RobotState.SQUAT:
             squat_rate = squat_count / (list_ticks[cycle_count % num_cycles] * ticks_per_second)
-            joint_pos_target = joint_linear_interpolation(default_pose, squad_pose, squat_rate)
+            joint_pos_target = joint_linear_interpolation(default_pose, squat_pose, squat_rate)
 
             if squat_rate >= 1.5:
                 current_state = RobotState.STRAIGHT
@@ -344,7 +346,7 @@ def run_simulator(sim: sim_utils.SimulationContext, entity: Articulation):
 
         elif current_state == RobotState.STRAIGHT:
             straight_rate = straight_count / (list_ticks[cycle_count % num_cycles] * ticks_per_second)
-            joint_pos_target = joint_linear_interpolation(squad_pose, default_pose, straight_rate)
+            joint_pos_target = joint_linear_interpolation(squat_pose, default_pose, straight_rate)
 
             if straight_rate >= 1.5:
                 current_state = RobotState.SQUAT
@@ -353,37 +355,42 @@ def run_simulator(sim: sim_utils.SimulationContext, entity: Articulation):
 
             straight_count += 1
 
-        lower_body_target_pose = joint_pos_target[:, lower_body_indices].detach().cpu().numpy()[0]
-        # upper_body_target_pose = joint_pos_target[:, upper_body_indices].detach().cpu().numpy()[0]
-        lower_body_current_pose = robot.data.joint_pos[:, lower_body_indices].detach().cpu().numpy()[0]
-        # upper_body_current_pose = robot.data.joint_pos[:, upper_body_indices].detach().cpu().numpy()[0]
+        elif current_state == RobotState.INFERENCE:
+            pass
 
-        queue.put((
-            lower_body_target_pose[0],  # left_hip_pitch_action
-            lower_body_current_pose[0],  # left_hip_pitch_pos
-            lower_body_target_pose[1],  # right_hip_pitch_action
-            lower_body_current_pose[1],  # right_hip_pitch_pos
-            lower_body_target_pose[2],  # left_hip_roll_action
-            lower_body_current_pose[2],  # left_hip_roll_pos
-            lower_body_target_pose[3],  # right_hip_roll_action
-            lower_body_current_pose[3],  # right_hip_roll_pos
-            lower_body_target_pose[4],  # left_hip_yaw_action
-            lower_body_current_pose[4],  # left_hip_yaw_pos
-            lower_body_target_pose[5],  # right_hip_yaw_action
-            lower_body_current_pose[5],  # right_hip_yaw_pos
-            lower_body_target_pose[6],  # left_knee_action
-            lower_body_current_pose[6],  # left_knee_pos
-            lower_body_target_pose[7],  # right_knee_action
-            lower_body_current_pose[7],  # right_knee_pos
-            lower_body_target_pose[8],  # left_ankle_pitch_action
-            lower_body_current_pose[8],  # left_ankle_pitch_pos
-            lower_body_target_pose[9],  # right_ankle_pitch_action
-            lower_body_current_pose[9],  # right_ankle_pitch_pos
-            lower_body_target_pose[10],  # left_ankle_roll_action
-            lower_body_current_pose[10],  # left_ankle_roll_pos
-            lower_body_target_pose[11],  # right_ankle_roll_action
-            lower_body_current_pose[11],  # right_ankle_roll_pos
-        ))
+        if args_cli.plot:
+            lower_body_target_pose = joint_pos_target[:, lower_body_indices].detach().cpu().numpy()[0]
+            # upper_body_target_pose = joint_pos_target[:, upper_body_indices].detach().cpu().numpy()[0]
+            lower_body_current_pose = robot.data.joint_pos[:, lower_body_indices].detach().cpu().numpy()[0]
+            # upper_body_current_pose = robot.data.joint_pos[:, upper_body_indices].detach().cpu().numpy()[0]
+
+            queue.put((
+                lower_body_target_pose[0],  # left_hip_pitch_action
+                lower_body_current_pose[0],  # left_hip_pitch_pos
+                lower_body_target_pose[1],  # right_hip_pitch_action
+                lower_body_current_pose[1],  # right_hip_pitch_pos
+                lower_body_target_pose[2],  # left_hip_roll_action
+                lower_body_current_pose[2],  # left_hip_roll_pos
+                lower_body_target_pose[3],  # right_hip_roll_action
+                lower_body_current_pose[3],  # right_hip_roll_pos
+                lower_body_target_pose[4],  # left_hip_yaw_action
+                lower_body_current_pose[4],  # left_hip_yaw_pos
+                lower_body_target_pose[5],  # right_hip_yaw_action
+                lower_body_current_pose[5],  # right_hip_yaw_pos
+                lower_body_target_pose[6],  # left_knee_action
+                lower_body_current_pose[6],  # left_knee_pos
+                lower_body_target_pose[7],  # right_knee_action
+                lower_body_current_pose[7],  # right_knee_pos
+                lower_body_target_pose[8],  # left_ankle_pitch_action
+                lower_body_current_pose[8],  # left_ankle_pitch_pos
+                lower_body_target_pose[9],  # right_ankle_pitch_action
+                lower_body_current_pose[9],  # right_ankle_pitch_pos
+                lower_body_target_pose[10],  # left_ankle_roll_action
+                lower_body_current_pose[10],  # left_ankle_roll_pos
+                lower_body_target_pose[11],  # right_ankle_roll_action
+                lower_body_current_pose[11],  # right_ankle_roll_pos
+            ))
+
         # apply action to the robot
         robot.set_joint_position_target(joint_pos_target)
         # write data to sim
