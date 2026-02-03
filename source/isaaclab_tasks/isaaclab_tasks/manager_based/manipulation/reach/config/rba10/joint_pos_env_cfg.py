@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -53,5 +53,8 @@ class RBA10ReachEnvCfg_PLAY(RBA10ReachEnvCfg):
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
+        self.episode_length_s = 3000.0
         # disable randomization for play
         self.observations.policy.enable_corruption = False
+        # disable command resampling for play
+        self.commands.ee_pose.resampling_time_range = (1e6, 1e6)  # no resampling during play

@@ -34,6 +34,10 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument("--udp_host", type=str, default="localhost", help="UDP host for publishing actions.")
+parser.add_argument("--udp_port", type=int, default=8888, help="UDP port for publishing actions.")
+parser.add_argument("--enable_udp", action="store_true", default=False, help="Enable UDP publishing of actions.")
+
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -53,13 +57,17 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
+import json
 import os
+import socket
 import time
 
 import gymnasium as gym
+import numpy as np
 import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
+from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg
 from isaaclab.envs import (
     DirectMARLEnv,
     DirectMARLEnvCfg,
@@ -78,6 +86,7 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 # PLACEHOLDER: Extension template (do not remove this comment)
+np.set_printoptions(precision=4, suppress=True)
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
@@ -172,7 +181,37 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
     export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
+    # initialize UDP socket for publishing actions
+    udp_socket = None
+    if args_cli.enable_udp:
+        try:
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print(f"[INFO] UDP socket initialized. Publishing to {args_cli.udp_host}:{args_cli.udp_port}")
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize UDP socket: {e}")
+            udp_socket = None
+
     dt = env.unwrapped.step_dt
+
+    # Setup keyboard interface for manual command resampling
+    keyboard_interface = Se3Keyboard(Se3KeyboardCfg(pos_sensitivity=0.0, rot_sensitivity=0.0))
+
+    # Flag to track if command resampling is requested
+    resample_requested = False
+
+    def resample_commands():
+        """Callback to trigger command resampling."""
+        nonlocal resample_requested
+        resample_requested = True
+        print("[INFO] Command resample requested - will update on next step")
+
+    # Add keyboard callback for command resampling
+    keyboard_interface.add_callback("N", resample_commands)
+    keyboard_interface.reset()
+
+    print("[INFO] Keyboard controls:")
+    print("  - Press 'N' to resample target commands")
+    print("  - Press 'L' to reset keyboard (built-in)")
 
     # reset environment
     obs = env.get_observations()
@@ -182,10 +221,44 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         start_time = time.time()
         # run everything in inference mode
         with torch.inference_mode():
+            # Check if command resampling was requested via keyboard
+            if resample_requested and hasattr(env.unwrapped, "command_manager"):
+                try:
+                    # Resample commands for all environments
+                    env_ids = torch.arange(env.unwrapped.num_envs, dtype=torch.int64, device=env.unwrapped.device)
+
+                    # Get all command terms and resample them
+                    for term_name in env.unwrapped.command_manager.active_terms:
+                        command_term = env.unwrapped.command_manager.get_term(term_name)
+                        command_term._resample(env_ids)
+
+                    print("[INFO] ✓ Commands resampled for all environments!")
+                except Exception as e:
+                    print(f"[WARNING] Failed to resample commands: {e}")
+
+                resample_requested = False
+
             # agent stepping
             actions = policy(obs)
             # env stepping
             obs, _, dones, _ = env.step(actions)
+
+            # publish actions via UDP
+            if udp_socket is not None and args_cli.enable_udp:
+                try:
+                    actions_numpy = actions.detach().cpu().numpy() * 0.5
+                    # create data payload
+                    data_payload = {"timestamp": time.time(), "timestep": timestep, "actions": actions_numpy.tolist()}
+
+                    # convert to JSON and send via UDP
+                    json_data = json.dumps(data_payload)
+                    udp_socket.sendto(json_data.encode("utf-8"), (args_cli.udp_host, args_cli.udp_port))
+                except Exception as e:
+                    print(f"[WARNING] Failed to send UDP data: {e}")
+
+            # print(f"\nObservations: {obs_ee_pos[0]}")
+            # print(f"Actions: {actions_numpy[0]}")
+
             # reset recurrent states for episodes that have terminated
             policy_nn.reset(dones)
         if args_cli.video:
@@ -198,6 +271,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         sleep_time = dt - (time.time() - start_time)
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
+
+    # close UDP socket if initialized
+    if udp_socket is not None:
+        udp_socket.close()
+        print("[INFO] UDP socket closed.")
 
     # close the simulator
     env.close()
