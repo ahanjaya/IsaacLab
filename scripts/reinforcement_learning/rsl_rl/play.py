@@ -198,6 +198,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # Flag to track if command resampling is requested
     resample_requested = False
+    # Flag to track if UDP sending is requested
+    send_udp_requested = False
 
     def resample_commands():
         """Callback to trigger command resampling."""
@@ -205,12 +207,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         resample_requested = True
         print("[INFO] Command resample requested - will update on next step")
 
+    def send_udp_data():
+        """Callback to trigger UDP data sending."""
+        nonlocal send_udp_requested
+        send_udp_requested = True
+        print("[INFO] UDP send requested")
+
     # Add keyboard callback for command resampling
     keyboard_interface.add_callback("N", resample_commands)
+    # Add keyboard callback for UDP sending
+    keyboard_interface.add_callback("M", send_udp_data)
     keyboard_interface.reset()
 
     print("[INFO] Keyboard controls:")
     print("  - Press 'N' to resample target commands")
+    print("  - Press 'M' to send UDP data")
     print("  - Press 'L' to reset keyboard (built-in)")
 
     # reset environment
@@ -243,16 +254,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # env stepping
             obs, _, dones, _ = env.step(actions)
 
-            # publish actions via UDP
-            if udp_socket is not None and args_cli.enable_udp:
+            # publish actions via UDP (only when M key is pressed)
+            if udp_socket is not None and args_cli.enable_udp and send_udp_requested:
                 try:
                     actions_numpy = actions.detach().cpu().numpy() * 0.5
                     # create data payload
                     data_payload = {"timestamp": time.time(), "timestep": timestep, "actions": actions_numpy.tolist()}
+                    print(data_payload)
 
                     # convert to JSON and send via UDP
                     json_data = json.dumps(data_payload)
                     udp_socket.sendto(json_data.encode("utf-8"), (args_cli.udp_host, args_cli.udp_port))
+                    send_udp_requested = False  # Reset flag after sending
                 except Exception as e:
                     print(f"[WARNING] Failed to send UDP data: {e}")
 
