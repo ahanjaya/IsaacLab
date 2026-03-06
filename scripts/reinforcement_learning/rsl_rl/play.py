@@ -205,7 +205,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         """Callback to trigger command resampling."""
         nonlocal resample_requested
         resample_requested = True
-        print("[INFO] Command resample requested - will update on next step")
 
     def send_udp_data():
         """Callback to trigger UDP data sending."""
@@ -269,11 +268,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 except Exception as e:
                     print(f"[WARNING] Failed to send UDP data: {e}")
 
-            # print(f"\nObservations: {obs_ee_pos[0]}")
-            # print(f"Actions: {actions_numpy[0]}")
-
             # reset recurrent states for episodes that have terminated
             policy_nn.reset(dones)
+            
         if args_cli.video:
             timestep += 1
             # Exit the play loop after recording one video

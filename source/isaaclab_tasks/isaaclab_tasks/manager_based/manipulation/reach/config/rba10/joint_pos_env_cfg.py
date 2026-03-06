@@ -57,4 +57,4 @@ class RBA10ReachEnvCfg_PLAY(RBA10ReachEnvCfg):
         # disable randomization for play
         self.observations.policy.enable_corruption = False
         # disable command resampling for play
-        self.commands.ee_pose.resampling_time_range = (1e6, 1e6)  # no resampling during play
+        self.commands.ee_pose.resampling_time_range = (1e10, 1e10)  # no resampling during play

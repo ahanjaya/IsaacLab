@@ -1,12 +1,12 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
+from dataclasses import MISSING
 
 from isaaclab.utils import configclass
-from dataclasses import MISSING
 
 import isaaclab_tasks.manager_based.manipulation.reach.mdp as mdp
 from isaaclab_tasks.manager_based.manipulation.reach.reach_env_cfg import ReachEnvCfg
@@ -20,6 +20,7 @@ from isaaclab_assets import RBA05_CFG  # isort: skip
 ##
 # Environment configuration
 ##
+
 
 @configclass
 class CommandsCfg:
@@ -75,5 +76,8 @@ class RBA05ReachEnvCfg_PLAY(RBA05ReachEnvCfg):
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
+        self.episode_length_s = 3000.0
         # disable randomization for play
         self.observations.policy.enable_corruption = False
+        # disable command resampling for play
+        self.commands.ee_pose.resampling_time_range = (1e10, 1e10)  # no resampling during play
