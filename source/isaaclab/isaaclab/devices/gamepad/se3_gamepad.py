@@ -92,6 +92,7 @@ class Se3Gamepad(DeviceBase):
         self._delta_pose_raw = np.zeros([2, 6])
         # dictionary for additional callbacks
         self._additional_callbacks = dict()
+        self._additional_callback_states = dict()
 
     def __del__(self):
         """Unsubscribe from gamepad events."""
@@ -120,6 +121,8 @@ class Se3Gamepad(DeviceBase):
         # default flags
         self._close_gripper = False
         self._delta_pose_raw.fill(0.0)
+        for key in self._additional_callback_states:
+            self._additional_callback_states[key] = False
 
     def add_callback(self, key: carb.input.GamepadInput, func: Callable):
         """Add additional functions to bind gamepad.
@@ -133,6 +136,7 @@ class Se3Gamepad(DeviceBase):
                 take any arguments.
         """
         self._additional_callbacks[key] = func
+        self._additional_callback_states[key] = False
 
     def advance(self) -> torch.Tensor:
         """Provides the result from gamepad event state.
@@ -191,7 +195,11 @@ class Se3Gamepad(DeviceBase):
                 self._delta_pose_raw[:, axis] = 0
         # additional callbacks
         if event.input in self._additional_callbacks:
-            self._additional_callbacks[event.input]()
+            is_pressed = cur_val > 0.5
+            was_pressed = self._additional_callback_states.get(event.input, False)
+            if is_pressed and not was_pressed:
+                self._additional_callbacks[event.input]()
+            self._additional_callback_states[event.input] = is_pressed
 
         # since no error, we are fine :)
         return True

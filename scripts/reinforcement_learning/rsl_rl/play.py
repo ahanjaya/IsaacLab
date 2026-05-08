@@ -67,7 +67,9 @@ import numpy as np
 import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
-from isaaclab.devices import Se3Keyboard, Se3KeyboardCfg
+import carb
+
+from isaaclab.devices import Se3Gamepad, Se3GamepadCfg, Se3Keyboard, Se3KeyboardCfg
 from isaaclab.envs import (
     DirectMARLEnv,
     DirectMARLEnvCfg,
@@ -186,19 +188,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if args_cli.enable_udp:
         try:
             udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            print(f"[INFO] UDP socket initialized. Publishing to {args_cli.udp_host}:{args_cli.udp_port}")
+            print(f"[INFO] UDP initialized: {args_cli.udp_host}:{args_cli.udp_port}")
         except Exception as e:
-            print(f"[ERROR] Failed to initialize UDP socket: {e}")
-            udp_socket = None
+            print(f"[ERROR] UDP Socket failed: {e}")
 
     dt = env.unwrapped.step_dt
 
     # Setup keyboard interface for manual command resampling
     keyboard_interface = Se3Keyboard(Se3KeyboardCfg(pos_sensitivity=0.0, rot_sensitivity=0.0))
+    gamepad_interface = Se3Gamepad(Se3GamepadCfg(pos_sensitivity=0.1, rot_sensitivity=0.1))
 
-    # Flag to track if command resampling is requested
     resample_requested = False
-    # Flag to track if UDP sending is requested
     send_udp_requested = False
 
     def resample_commands():
@@ -210,18 +210,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         """Callback to trigger UDP data sending."""
         nonlocal send_udp_requested
         send_udp_requested = True
-        print("[INFO] UDP send requested")
 
-    # Add keyboard callback for command resampling
+    # Keyboard Bindings
     keyboard_interface.add_callback("N", resample_commands)
-    # Add keyboard callback for UDP sending
     keyboard_interface.add_callback("M", send_udp_data)
-    keyboard_interface.reset()
 
-    print("[INFO] Keyboard controls:")
-    print("  - Press 'N' to resample target commands")
-    print("  - Press 'M' to send UDP data")
-    print("  - Press 'L' to reset keyboard (built-in)")
+    # Gamepad Bindings (must use carb.input.GamepadInput enums)
+    gamepad_interface.add_callback(carb.input.GamepadInput.A, resample_commands)
+    gamepad_interface.add_callback(carb.input.GamepadInput.X, send_udp_data)
+
+    keyboard_interface.reset()
+    gamepad_interface.reset()
+
+    print("[INFO] Controls Initialized:")
+    print("  - Resample (N / Button A)")
+    print("  - Send UDP (M / Button X)")
 
     # reset environment
     obs = env.get_observations()
@@ -229,7 +232,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
-        # run everything in inference mode
+
+        # Advance devices to process callbacks
+        keyboard_interface.advance()
+        gamepad_interface.advance()
+
         with torch.inference_mode():
             # Check if command resampling was requested via keyboard
             if resample_requested and hasattr(env.unwrapped, "command_manager"):
@@ -270,7 +277,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
             # reset recurrent states for episodes that have terminated
             policy_nn.reset(dones)
-            
+
         if args_cli.video:
             timestep += 1
             # Exit the play loop after recording one video
@@ -285,9 +292,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # close UDP socket if initialized
     if udp_socket is not None:
         udp_socket.close()
-        print("[INFO] UDP socket closed.")
-
-    # close the simulator
     env.close()
 
 
