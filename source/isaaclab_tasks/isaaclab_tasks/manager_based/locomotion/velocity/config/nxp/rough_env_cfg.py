@@ -309,7 +309,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "contact_forces",
             body_names=[".*_upper_arm_link", ".*_hip_yaw_link", "pelvis_link"],
         )
-        self.rewards.joint_deviation_hip.weight = -0.1
+        self.rewards.joint_deviation_hip.weight = -0.2
         self.rewards.joint_deviation_knee.weight = -0.01
         self.rewards.joint_deviation_arms.weight = -0.1
         self.rewards.flat_orientation_l2.weight = -5.0
