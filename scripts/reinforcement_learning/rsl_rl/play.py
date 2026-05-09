@@ -66,19 +66,17 @@ installed_version = metadata.version("rsl-rl-lib")
 
 """Rest everything follows."""
 
-import gymnasium as gym
 import json
-import matplotlib.pyplot as plt
 import multiprocessing as mp
-import numpy as np
 import os
 import socket
 import time
-
-import gymnasium as gym
-import torch
 from collections import deque
 
+import gymnasium as gym
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
 from isaaclab.envs import (
