@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -16,13 +16,14 @@ This script demonstrates nxp humanoid robot.
 """Launch Isaac Sim Simulator first."""
 
 import argparse
-import matplotlib.pyplot as plt
 import multiprocessing as mp
-import numpy as np
 import time
-import torch
 from collections import deque
 from enum import Enum
+
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 
 from isaaclab.app import AppLauncher
 
@@ -90,8 +91,8 @@ def _plot_joint_visualization(queue) -> None:
     # Configuration
     joint_names = ["Hip Pitch", "Hip Roll", "Hip Yaw", "Knee", "Ankle Pitch", "Ankle Roll"]
     num_joints = len(joint_names)
-    window_size = 750
-    ylim = (-0.75, 0.75)
+    window_size = 1000
+    ylim = (-0.6, 0.6)
 
     # Create figure and axes
     fig, ax = plt.subplots(num_joints, 2, figsize=(20, 15))
@@ -213,40 +214,43 @@ def run_simulator(sim: sim_utils.SimulationContext, entity: Articulation):
     sim_dt = sim.get_physics_dt()
     sim_time = 0.0
     # print(f"[INFO]: Robot Joint Names: {entity.data.joint_names}")
-    # print(f"[INFO]: Robot Default Joint Pos: {entity.data.default_joint_pos}")
+    print(f"[INFO]: Robot Default Joint Pos: {entity.data.default_joint_pos}")
 
     default_pose = entity.data.default_joint_pos.clone()
     squad_pose = torch.tensor(
-        [[
-            0.5200,
-            -0.5200,
-            0.0000,
-            0.15,
-            -0.15,
-            0.0000,
-            0.0000,
-            0.0000,
-            -0.3500,
-            0.3500,
-            0.0000,
-            -0.1300,
-            0.1300,
-            -0.7850,
-            0.7850,
-            -0.1300,
-            0.1300,
-            0.4360,
-            -0.4360,
-            0.5200,
-            -0.5200,
-            -0.2000,
-            0.2000,
-        ]],
+        [
+            [
+                0.0000,
+                0.1309,
+                0.0000,
+                -0.1309,
+                0.0000,
+                0.0000,
+                -0.0174,
+                -0.0436,
+                0.0174,
+                0.0436,
+                -0.0872,
+                -0.1309,
+                0.0872,
+                0.1309,
+                -0.1745,
+                0.1745,
+                0.1745,
+                -0.1745,
+                0.0872,
+                -0.0872,
+                -0.0174,
+                0.0174,
+            ]
+        ],
         device="cuda:0",
     )
     joint_pos_target = default_pose.clone()
 
-    ticks_per_second = 1.0 / sim_dt
+    decimation = 1
+    control_dt = sim_dt * decimation
+    ticks_per_second = 1.0 / control_dt
     list_ticks = np.arange(0.2, 1.0, 0.2)
     num_cycles = len(list_ticks)
 
@@ -290,8 +294,8 @@ def run_simulator(sim: sim_utils.SimulationContext, entity: Articulation):
     # upper_body_indices = [entity.data.joint_names.index(name) for name in upper_body_joint_names]
 
     # Start the plotting function in a separate process
-    queue = mp.Queue()
-    mp_plot = mp.Process(target=_plot_joint_visualization, args=(queue,))
+    plot_queue = mp.Queue()
+    mp_plot = mp.Process(target=_plot_joint_visualization, args=(plot_queue,))
     mp_plot.start()
 
     # Simulate physics
@@ -358,50 +362,54 @@ def run_simulator(sim: sim_utils.SimulationContext, entity: Articulation):
         lower_body_current_pose = robot.data.joint_pos[:, lower_body_indices].detach().cpu().numpy()[0]
         # upper_body_current_pose = robot.data.joint_pos[:, upper_body_indices].detach().cpu().numpy()[0]
 
-        queue.put((
-            lower_body_target_pose[0],  # left_hip_pitch_action
-            lower_body_current_pose[0],  # left_hip_pitch_pos
-            lower_body_target_pose[1],  # right_hip_pitch_action
-            lower_body_current_pose[1],  # right_hip_pitch_pos
-            lower_body_target_pose[2],  # left_hip_roll_action
-            lower_body_current_pose[2],  # left_hip_roll_pos
-            lower_body_target_pose[3],  # right_hip_roll_action
-            lower_body_current_pose[3],  # right_hip_roll_pos
-            lower_body_target_pose[4],  # left_hip_yaw_action
-            lower_body_current_pose[4],  # left_hip_yaw_pos
-            lower_body_target_pose[5],  # right_hip_yaw_action
-            lower_body_current_pose[5],  # right_hip_yaw_pos
-            lower_body_target_pose[6],  # left_knee_action
-            lower_body_current_pose[6],  # left_knee_pos
-            lower_body_target_pose[7],  # right_knee_action
-            lower_body_current_pose[7],  # right_knee_pos
-            lower_body_target_pose[8],  # left_ankle_pitch_action
-            lower_body_current_pose[8],  # left_ankle_pitch_pos
-            lower_body_target_pose[9],  # right_ankle_pitch_action
-            lower_body_current_pose[9],  # right_ankle_pitch_pos
-            lower_body_target_pose[10],  # left_ankle_roll_action
-            lower_body_current_pose[10],  # left_ankle_roll_pos
-            lower_body_target_pose[11],  # right_ankle_roll_action
-            lower_body_current_pose[11],  # right_ankle_roll_pos
-        ))
+        plot_queue.put(
+            (
+                lower_body_target_pose[0],  # left_hip_pitch_action
+                lower_body_current_pose[0],  # left_hip_pitch_pos
+                lower_body_target_pose[1],  # right_hip_pitch_action
+                lower_body_current_pose[1],  # right_hip_pitch_pos
+                lower_body_target_pose[2],  # left_hip_roll_action
+                lower_body_current_pose[2],  # left_hip_roll_pos
+                lower_body_target_pose[3],  # right_hip_roll_action
+                lower_body_current_pose[3],  # right_hip_roll_pos
+                lower_body_target_pose[4],  # left_hip_yaw_action
+                lower_body_current_pose[4],  # left_hip_yaw_pos
+                lower_body_target_pose[5],  # right_hip_yaw_action
+                lower_body_current_pose[5],  # right_hip_yaw_pos
+                lower_body_target_pose[6],  # left_knee_action
+                lower_body_current_pose[6],  # left_knee_pos
+                lower_body_target_pose[7],  # right_knee_action
+                lower_body_current_pose[7],  # right_knee_pos
+                lower_body_target_pose[8],  # left_ankle_pitch_action
+                lower_body_current_pose[8],  # left_ankle_pitch_pos
+                lower_body_target_pose[9],  # right_ankle_pitch_action
+                lower_body_current_pose[9],  # right_ankle_pitch_pos
+                lower_body_target_pose[10],  # left_ankle_roll_action
+                lower_body_current_pose[10],  # left_ankle_roll_pos
+                lower_body_target_pose[11],  # right_ankle_roll_action
+                lower_body_current_pose[11],  # right_ankle_roll_pos
+            )
+        )
+
         # apply action to the robot
         robot.set_joint_position_target(joint_pos_target)
         # write data to sim
         robot.write_data_to_sim()
 
-        # perform step
-        sim.step()
-        # update sim-time
-        sim_time += sim_dt
-        # update buffers
-        robot.update(sim_dt)
+        # perform decimated physics steps
+        for _ in range(decimation):
+            sim.step()
+            robot.update(sim_dt)
+
+        # update sim-time by one control step
+        sim_time += control_dt
 
 
 def main():
     """Main function."""
 
     # Initialize the simulation context
-    sim = sim_utils.SimulationContext(sim_utils.SimulationCfg(dt=0.02))
+    sim = sim_utils.SimulationContext(sim_utils.SimulationCfg(dt=0.005))
     # Set main camera
     sim.set_camera_view(eye=[2.5, 2.5, 2.5], target=[0.0, 0.0, 0.0])
     # design scene

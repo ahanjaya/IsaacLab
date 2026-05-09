@@ -1,0 +1,30 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+# PD gains for NXP V1 humanoid - hot-reloaded by nxp_humanoid.py
+#
+# Edit values and save. The simulator will pick up changes on the next
+# control step (no restart needed).
+#
+# Pattern syntax: regex matched against joint names.
+# Order matters only for printing; later patterns override earlier ones
+# if a joint matches multiple patterns.
+
+# ---- Lower body (legs) ----
+".*_hip_pitch_.*":      {kp: 400.0, kd: 2.5}
+".*_hip_roll_.*":       {kp: 300.0, kd: 3.0}
+".*_hip_yaw_.*":        {kp: 150.0, kd: 1.0}
+".*_knee_.*":           {kp: 300.0, kd: 1.5}
+".*_ankle_pitch_.*":    {kp: 150.0, kd: 1.0}
+".*_ankle_roll_.*":     {kp: 75.0, kd: 1.0}
+
+# ---- Upper body (arms) ----
+".*_shoulder_pitch_.*": {kp:  10.0, kd:  1.0}
+".*_shoulder_roll_.*":  {kp:  10.0, kd:  1.0}
+".*_shoulder_yaw_.*":   {kp:  5.0, kd:  0.1}
+".*_elbow_.*":          {kp:  5.0, kd:  0.1}
+
+# ---- Head ----
+"head_.*":              {kp:  5.0, kd:  0.1}
