@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
@@ -8,9 +8,7 @@
 import os
 
 import isaaclab.sim as sim_utils
-
-# from isaaclab.actuators import DCMotorCfg
-from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.actuators import IdealPDActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 ##
@@ -39,6 +37,7 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
             enabled_self_collisions=False,
             solver_position_iteration_count=4,
             solver_velocity_iteration_count=4,
+            # fix_root_link=True,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
@@ -95,161 +94,154 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     actuators={
-        # "hip_pitch": DCMotorCfg(
-        #     joint_names_expr=[".*_hip_pitch_.*"],
-        #     effort_limit=120.0,
-        #     saturation_effort=120.0,
-        #     velocity_limit=15.74,
-        #     stiffness=200.0,
-        #     damping=6.0,
-        #     armature=0.1,
-        # ),
-        # "hip_roll": DCMotorCfg(
-        #     joint_names_expr=[".*_hip_roll_.*"],
-        #     effort_limit=200.0,
-        #     saturation_effort=200.0,
-        #     velocity_limit=15.74,
-        #     stiffness=200.0,
-        #     damping=6.0,
-        #     armature=0.5,
-        # ),
-        # "hip_yaw": DCMotorCfg(
-        #     joint_names_expr=[".*_hip_yaw_.*"],
-        #     effort_limit=120.0,
-        #     saturation_effort=120.0,
-        #     velocity_limit=15.74,
-        #     stiffness=200.0,
-        #     damping=6.0,
-        #     armature=0.1,
-        # ),
-        # "knee": DCMotorCfg(
-        #     joint_names_expr=[".*_knee_.*"],
-        #     effort_limit=200.0,
-        #     saturation_effort=200.0,
-        #     velocity_limit=15.74,
-        #     stiffness=200.0,
-        #     damping=6.0,
-        #     armature=0.1,
-        # ),
-        # "ankle_pitch": DCMotorCfg(
-        #     joint_names_expr=[".*_ankle_pitch_.*"],
-        #     effort_limit=120.0,
-        #     saturation_effort=120.0,
-        #     velocity_limit=15.74,
-        #     stiffness=200.0,
-        #     damping=6.0,
-        #     armature=0.1,
-        # ),
-        # "ankle_roll": DCMotorCfg(
-        #     joint_names_expr=[".*_ankle_roll_.*"],
-        #     effort_limit=120.0,
-        #     saturation_effort=120.0,
-        #     velocity_limit=15.74,
-        #     stiffness=200.0,
-        #     damping=6.0,
-        #     armature=0.1,
-        # ),
-        # "arm": DCMotorCfg(
-        #     joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
-        #     effort_limit=17.0,
-        #     saturation_effort=17.0,
-        #     velocity_limit=33.93,
-        #     stiffness=30.0,
-        #     damping=1.5,
-        #     armature=0.1,
-        # ),
-        # "head": DCMotorCfg(
-        #     joint_names_expr=["head_.*"],
-        #     effort_limit=14.0,
-        #     saturation_effort=14.0,
-        #     velocity_limit=24.50,
-        #     stiffness=30.0,
-        #     damping=1.5,
-        #     armature=0.1,
-        # ),
-        "hip_pitch": ImplicitActuatorCfg(
+        "hip_pitch": IdealPDActuatorCfg(
             joint_names_expr=[".*_hip_pitch_.*"],
-            effort_limit_sim=200.0,
-            stiffness=200.0,
-            damping=6.0,
-            armature=0.1,
+            effort_limit=120.0,
+            velocity_limit=17.48,
+            stiffness=400.0,
+            damping=2.5,
         ),
-        "hip_roll": ImplicitActuatorCfg(
+        "hip_roll": IdealPDActuatorCfg(
             joint_names_expr=[".*_hip_roll_.*"],
-            effort_limit_sim=300.0,
+            effort_limit=120.0,
+            velocity_limit=17.48,
             stiffness=300.0,
-            damping=7.0,
-            armature=0.1,
+            damping=3.0,
         ),
-        "hip_yaw": ImplicitActuatorCfg(
+        "hip_yaw": IdealPDActuatorCfg(
             joint_names_expr=[".*_hip_yaw_.*"],
-            effort_limit_sim=200.0,
-            stiffness=200.0,
-            damping=6.0,
-            armature=0.1,
-        ),
-        "knee": ImplicitActuatorCfg(
-            joint_names_expr=[".*_knee_.*"],
-            effort_limit_sim=200.0,
-            stiffness=200.0,
-            damping=6.0,
-            armature=0.1,
-        ),
-        "ankle_pitch": ImplicitActuatorCfg(
-            joint_names_expr=[".*_ankle_pitch_.*"],
-            effort_limit_sim=200.0,
-            stiffness=200.0,
-            damping=6.0,
-            armature=0.1,
-        ),
-        "ankle_roll": ImplicitActuatorCfg(
-            joint_names_expr=[".*_ankle_roll_.*"],
-            effort_limit_sim=150.0,
+            effort_limit=60.0,
+            velocity_limit=18.85,
             stiffness=150.0,
-            damping=5.0,
-            armature=0.1,
+            damping=1.0,
         ),
-        "shoulder_pitch": ImplicitActuatorCfg(
+        "knee": IdealPDActuatorCfg(
+            joint_names_expr=[".*_knee_.*"],
+            effort_limit=200.0,
+            velocity_limit=17.48,
+            stiffness=300.0,
+            damping=1.5,
+        ),
+        "ankle_pitch": IdealPDActuatorCfg(
+            joint_names_expr=[".*_ankle_pitch_.*"],
+            effort_limit=60.0,
+            velocity_limit=18.85,
+            stiffness=150.0,
+            damping=1.0,
+        ),
+        "ankle_roll": IdealPDActuatorCfg(
+            joint_names_expr=[".*_ankle_roll_.*"],
+            effort_limit=17.0,
+            velocity_limit=37.68,
+            stiffness=75.0,
+            damping=1.0,
+        ),
+        "shoulder_pitch": IdealPDActuatorCfg(
             joint_names_expr=[".*_shoulder_pitch_.*"],
-            effort_limit_sim=30.0,
-            stiffness=30.0,
+            effort_limit=17.0,
+            velocity_limit=37.68,
+            stiffness=10.0,
             damping=1.0,
-            armature=0.1,
         ),
-        "shoulder_roll": ImplicitActuatorCfg(
+        "shoulder_roll": IdealPDActuatorCfg(
             joint_names_expr=[".*_shoulder_roll_.*"],
-            effort_limit_sim=30.0,
-            stiffness=30.0,
+            effort_limit=17.0,
+            velocity_limit=37.68,
+            stiffness=10.0,
             damping=1.0,
-            armature=0.1,
         ),
-        "shoulder_yaw": ImplicitActuatorCfg(
+        "shoulder_yaw": IdealPDActuatorCfg(
             joint_names_expr=[".*_shoulder_yaw_.*"],
-            effort_limit_sim=30.0,
-            stiffness=30.0,
-            damping=1.0,
-            armature=0.1,
+            effort_limit=17.0,
+            velocity_limit=37.68,
+            stiffness=5.0,
+            damping=0.1,
         ),
-        "elbow": ImplicitActuatorCfg(
+        "elbow": IdealPDActuatorCfg(
             joint_names_expr=[".*_elbow_.*"],
-            effort_limit_sim=30.0,
-            stiffness=30.0,
-            damping=1.0,
-            armature=0.1,
+            effort_limit=17.0,
+            velocity_limit=37.68,
+            stiffness=5.0,
+            damping=0.1,
         ),
-        "head_pan": ImplicitActuatorCfg(
-            joint_names_expr=["head_pan.*"],
-            effort_limit_sim=20.0,
-            stiffness=20.0,
-            damping=0.5,
-            armature=0.1,
+        "head": IdealPDActuatorCfg(
+            joint_names_expr=["head_.*"],
+            effort_limit=5.0,
+            velocity_limit=27.22,
+            stiffness=5.0,
+            damping=0.1,
         ),
-        "head_tilt": ImplicitActuatorCfg(
-            joint_names_expr=["head_tilt.*"],
-            effort_limit_sim=20.0,
-            stiffness=20.0,
-            damping=0.5,
-            armature=0.1,
-        ),
+        # "hip_pitch": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_hip_pitch_.*"],
+        #     effort_limit_sim=120.0,
+        #     stiffness=400.0,
+        #     damping=30.0,
+        # ),
+        # "hip_roll": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_hip_roll_.*"],
+        #     effort_limit_sim=120.0,
+        #     stiffness=400.0,
+        #     damping=50.0,
+        # ),
+        # "hip_yaw": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_hip_yaw_.*"],
+        #     effort_limit_sim=60.0,
+        #     stiffness=300.0,
+        #     damping=30.0,
+        # ),
+        # "knee": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_knee_.*"],
+        #     effort_limit_sim=120.0,
+        #     stiffness=300.0,
+        #     damping=30.0,
+        # ),
+        # "ankle_pitch": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_ankle_pitch_.*"],
+        #     effort_limit_sim=60.0,
+        #     stiffness=300.0,
+        #     damping=30.0,
+        # ),
+        # "ankle_roll": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_ankle_roll_.*"],
+        #     effort_limit_sim=17.0,
+        #     stiffness=300.0,
+        #     damping=20.0,
+        # ),
+        # "shoulder_pitch": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_shoulder_pitch_.*"],
+        #     effort_limit_sim=17.0,
+        #     stiffness=20.0,
+        #     damping=5.0,
+        # ),
+        # "shoulder_roll": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_shoulder_roll_.*"],
+        #     effort_limit_sim=17.0,
+        #     stiffness=25.0,
+        #     damping=5.0,
+        # ),
+        # "shoulder_yaw": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_shoulder_yaw_.*"],
+        #     effort_limit_sim=17.0,
+        #     stiffness=20.0,
+        #     damping=5.0,
+        # ),
+        # "elbow": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*_elbow_.*"],
+        #     effort_limit_sim=17.0,
+        #     stiffness=25.0,
+        #     damping=5.0,
+        # ),
+        # "head_pan": ImplicitActuatorCfg(
+        #     joint_names_expr=["head_pan.*"],
+        #     effort_limit_sim=5.0,
+        #     stiffness=20.0,
+        #     damping=5.0,
+        # ),
+        # "head_tilt": ImplicitActuatorCfg(
+        #     joint_names_expr=["head_tilt.*"],
+        #     effort_limit_sim=5.0,
+        #     stiffness=20.0,
+        #     damping=5.0,
+        # ),
     },
 )
