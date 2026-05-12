@@ -33,30 +33,30 @@ class NXPFlatEnvCfg(NXPRoughEnvCfg):
         # Randomization
 
         # physics material
-        self.events.physics_material.params["static_friction_range"] = (0.2, 1.25)
-        self.events.physics_material.params["dynamic_friction_range"] = (0.2, 1.25)
-        self.events.physics_material.params["restitution_range"] = (0.0, 0.1)
+        # self.events.physics_material.params["static_friction_range"] = (0.2, 1.25)
+        # self.events.physics_material.params["dynamic_friction_range"] = (0.2, 1.25)
+        # self.events.physics_material.params["restitution_range"] = (0.0, 0.1)
 
-        self.events.reset_base.params = {
-            "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "velocity_range": {
-                "x": (-0.2, 0.2),
-                "y": (-0.2, 0.2),
-                "z": (-0.2, 0.2),
-                "roll": (-0.2, 0.2),
-                "pitch": (-0.2, 0.2),
-                "yaw": (-0.2, 0.2),
-            },
-        }
-        self.events.reset_robot_joints.params["position_range"] = (-0.9, 1.1)
-        self.events.push_robot.params["velocity_range"] = {
-            "x": (-0.5, 0.5),
-            "y": (-0.5, 0.5),
-            "z": (-0.5, 0.5),
-            "roll": (-0.5, 0.5),
-            "pitch": (-0.5, 0.5),
-            "yaw": (-0.5, 0.5),
-        }
+        # self.events.reset_base.params = {
+        #     "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
+        #     "velocity_range": {
+        #         "x": (-0.2, 0.2),
+        #         "y": (-0.2, 0.2),
+        #         "z": (-0.2, 0.2),
+        #         "roll": (-0.2, 0.2),
+        #         "pitch": (-0.2, 0.2),
+        #         "yaw": (-0.2, 0.2),
+        #     },
+        # }
+        # self.events.reset_robot_joints.params["position_range"] = (-0.9, 1.1)
+        # self.events.push_robot.params["velocity_range"] = {
+        #     "x": (-0.5, 0.5),
+        #     "y": (-0.5, 0.5),
+        #     "z": (-0.5, 0.5),
+        #     "roll": (-0.5, 0.5),
+        #     "pitch": (-0.5, 0.5),
+        #     "yaw": (-0.5, 0.5),
+        # }
 
         # Rewards
         self.rewards.lin_vel_z_l2.weight = -2.0
