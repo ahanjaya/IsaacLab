@@ -3,11 +3,6 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Copyright (c) 2021-2026, ETH Zurich and NVIDIA CORPORATION
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
 
 from __future__ import annotations
 
@@ -42,6 +37,7 @@ class PPO:
         actor: MLPModel,
         critic: MLPModel,
         storage: RolloutStorage,
+        lin_vel_estimator: MLPModel | None = None,
         num_learning_epochs: int = 5,
         num_mini_batches: int = 4,
         clip_param: float = 0.2,
@@ -122,6 +118,17 @@ class PPO:
             chain(self.actor.parameters(), self.critic.parameters()), lr=learning_rate
         )  # type: ignore
 
+        self.lin_vel_estimator = lin_vel_estimator
+
+        if self.lin_vel_estimator is not None:
+            self.lin_vel_estimator = self.lin_vel_estimator.to(self.device)
+            self.lin_vel_estimator_optimizer = optim.Adam(
+                self.lin_vel_estimator.parameters(), lr=self.lin_vel_estimator.learning_rate
+            )
+
+        # Losses
+        self.l2_loss = nn.MSELoss()
+
         # Add storage
         self.storage = storage
         self.transition = RolloutStorage.Transition()
@@ -145,6 +152,10 @@ class PPO:
         """Sample actions and store transition data."""
         # Record the hidden states for recurrent policies
         self.transition.hidden_states = (self.actor.get_hidden_state(), self.critic.get_hidden_state())
+
+        if self.lin_vel_estimator:
+            obs["estimated_lin_vel"] = self.lin_vel_estimator(obs["proprioceptive"]).detach()
+
         # Compute the actions and values
         self.transition.actions = self.actor(obs, stochastic_output=True).detach()
         self.transition.values = self.critic(obs).detach()
@@ -218,6 +229,8 @@ class PPO:
         mean_value_loss = 0
         mean_surrogate_loss = 0
         mean_entropy = 0
+        # Linear velocity estimator loss
+        mean_lin_vel_estimator_loss = 0 if self.lin_vel_estimator else None
         # RND loss
         mean_rnd_loss = 0 if self.rnd else None
         # Symmetry loss
@@ -255,6 +268,13 @@ class PPO:
                 batch.values = batch.values.repeat(num_aug, 1)
                 batch.advantages = batch.advantages.repeat(num_aug, 1)
                 batch.returns = batch.returns.repeat(num_aug, 1)
+
+            # -- Linear velocity estimator loss
+            if self.lin_vel_estimator:
+                estimated_lin_vel = self.lin_vel_estimator(batch.observations["proprioceptive"])
+                true_lin_vel = batch.observations["lin_vel"]
+                lin_vel_estimator_loss = self.l2_loss(estimated_lin_vel, true_lin_vel)
+                batch.observations["estimated_lin_vel"] = estimated_lin_vel.detach()
 
             # Recompute actions log prob and entropy for current batch of transitions
             # Note: We need to do this because we updated the policy with the new parameters
@@ -366,6 +386,11 @@ class PPO:
             # Compute the gradients for PPO
             self.optimizer.zero_grad()
             loss.backward()
+
+            if self.lin_vel_estimator:
+                self.lin_vel_estimator.zero_grad()
+                lin_vel_estimator_loss.backward()
+
             # Compute the gradients for RND
             if self.rnd:
                 self.rnd_optimizer.zero_grad()
@@ -379,6 +404,12 @@ class PPO:
             nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)
             nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
             self.optimizer.step()
+
+            # Apply the gradients for LinVelEstimator
+            if self.lin_vel_estimator:
+                nn.utils.clip_grad_norm_(self.lin_vel_estimator.parameters(), 1.0)
+                self.lin_vel_estimator_optimizer.step()
+
             # Apply the gradients for RND
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
@@ -387,6 +418,9 @@ class PPO:
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
             mean_entropy += entropy.mean().item()
+            # Linear velocity estimator loss
+            if mean_lin_vel_estimator_loss is not None:
+                mean_lin_vel_estimator_loss += lin_vel_estimator_loss.item()
             # RND loss
             if mean_rnd_loss is not None:
                 mean_rnd_loss += rnd_loss.item()
@@ -399,6 +433,8 @@ class PPO:
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates
+        if mean_lin_vel_estimator_loss is not None:
+            mean_lin_vel_estimator_loss /= num_updates
         if mean_rnd_loss is not None:
             mean_rnd_loss /= num_updates
         if mean_symmetry_loss is not None:
@@ -413,6 +449,8 @@ class PPO:
             "surrogate": mean_surrogate_loss,
             "entropy": mean_entropy,
         }
+        if self.lin_vel_estimator:
+            loss_dict["lin_vel_estimator"] = mean_lin_vel_estimator_loss
         if self.rnd:
             loss_dict["rnd"] = mean_rnd_loss
         if self.symmetry:
@@ -426,6 +464,8 @@ class PPO:
         self.critic.train()
         if self.rnd:
             self.rnd.train()
+        if self.lin_vel_estimator:
+            self.lin_vel_estimator.train()
 
     def eval_mode(self) -> None:
         """Set evaluation mode for learnable models."""
@@ -433,6 +473,8 @@ class PPO:
         self.critic.eval()
         if self.rnd:
             self.rnd.eval()
+        if self.lin_vel_estimator:
+            self.lin_vel_estimator.eval()
 
     def save(self) -> dict:
         """Return a dict of all models for saving."""
@@ -444,6 +486,9 @@ class PPO:
         if self.rnd:
             saved_dict["rnd_state_dict"] = self.rnd.state_dict()
             saved_dict["rnd_optimizer_state_dict"] = self.rnd_optimizer.state_dict()
+        if self.lin_vel_estimator:
+            saved_dict["lin_vel_estimator_state_dict"] = self.lin_vel_estimator.state_dict()
+            saved_dict["lin_vel_estimator_optimizer_state_dict"] = self.lin_vel_estimator_optimizer.state_dict()
         return saved_dict
 
     def load(self, loaded_dict: dict, load_cfg: dict | None, strict: bool) -> bool:
@@ -456,6 +501,7 @@ class PPO:
                 "optimizer": True,
                 "iteration": True,
                 "rnd": True,
+                "lin_vel_estimator": True,
             }
 
         # Load the specified models
@@ -468,11 +514,18 @@ class PPO:
         if load_cfg.get("rnd") and self.rnd:
             self.rnd.load_state_dict(loaded_dict["rnd_state_dict"], strict=strict)
             self.rnd_optimizer.load_state_dict(loaded_dict["rnd_optimizer_state_dict"])
+        if load_cfg.get("lin_vel_estimator") and self.lin_vel_estimator:
+            self.lin_vel_estimator.load_state_dict(loaded_dict["lin_vel_estimator_state_dict"], strict=strict)
+            self.lin_vel_estimator_optimizer.load_state_dict(loaded_dict["lin_vel_estimator_optimizer_state_dict"])
         return load_cfg.get("iteration", False)
 
     def get_policy(self) -> MLPModel:
         """Get the policy model."""
         return self.actor
+
+    def get_lin_vel_estimator(self) -> MLPModel | None:
+        """Get the linear velocity estimator model, or None if not used."""
+        return self.lin_vel_estimator
 
     @staticmethod
     def construct_algorithm(obs: TensorDict, env: VecEnv, cfg: dict, device: str) -> PPO:
@@ -502,11 +555,28 @@ class PPO:
         critic: MLPModel = critic_class(obs, cfg["obs_groups"], "critic", 1, **cfg["critic"]).to(device)
         print(f"Critic Model: {critic}")
 
+        # If linear velocity estimator is used, initialize it
+        lin_vel_estimator = None
+        if "lin_vel_estimator" in cfg and cfg["lin_vel_estimator"] is not None:
+            lin_vel_estimator_class: type[MLPModel] = resolve_callable(cfg["lin_vel_estimator"].pop("class_name"))  # type: ignore
+            output_dim = cfg["lin_vel_estimator"].pop("output_dim")
+            input_dim = obs["proprioceptive"].shape[-1]
+            lin_vel_estimator = lin_vel_estimator_class(input_dim, output_dim, **cfg["lin_vel_estimator"]).to(device)
+            print(f"Linear Velocity Estimator Model: {lin_vel_estimator}")
+
         # Initialize the storage
         storage = RolloutStorage("rl", env.num_envs, cfg["num_steps_per_env"], obs, [env.num_actions], device)
 
         # Initialize the algorithm
-        alg: PPO = alg_class(actor, critic, storage, device=device, **cfg["algorithm"], multi_gpu_cfg=cfg["multi_gpu"])
+        alg: PPO = alg_class(
+            actor,
+            critic,
+            storage,
+            lin_vel_estimator=lin_vel_estimator,
+            device=device,
+            **cfg["algorithm"],
+            multi_gpu_cfg=cfg["multi_gpu"],
+        )
 
         return alg
 
@@ -516,6 +586,8 @@ class PPO:
         model_params = [self.actor.state_dict(), self.critic.state_dict()]
         if self.rnd:
             model_params.append(self.rnd.predictor.state_dict())
+        if self.lin_vel_estimator:
+            model_params.append(self.lin_vel_estimator.state_dict())
         # Broadcast the model parameters
         torch.distributed.broadcast_object_list(model_params, src=0)
         # Load the model parameters on all GPUs from source GPU
@@ -523,6 +595,8 @@ class PPO:
         self.critic.load_state_dict(model_params[1])
         if self.rnd:
             self.rnd.predictor.load_state_dict(model_params[2])
+        if self.lin_vel_estimator:
+            self.lin_vel_estimator.load_state_dict(model_params[-1])
 
     def reduce_parameters(self) -> None:
         """Collect gradients from all GPUs and average them.
@@ -533,6 +607,8 @@ class PPO:
         all_params = chain(self.actor.parameters(), self.critic.parameters())
         if self.rnd:
             all_params = chain(all_params, self.rnd.parameters())
+        if self.lin_vel_estimator:
+            all_params = chain(all_params, self.lin_vel_estimator.parameters())
         all_params = list(all_params)
         grads = [param.grad.view(-1) for param in all_params if param.grad is not None]
         all_grads = torch.cat(grads)

@@ -3,11 +3,6 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Copyright (c) 2021-2026, ETH Zurich and NVIDIA CORPORATION
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
 
 from __future__ import annotations
 
@@ -43,6 +38,7 @@ class OnPolicyRunner:
         # Create the algorithm
         alg_class: type[PPO] = resolve_callable(self.cfg["algorithm"]["class_name"])  # type: ignore
         self.alg = alg_class.construct_algorithm(obs, self.env, self.cfg, self.device)
+        self.linvel_estimator = self.alg.lin_vel_estimator  # type: ignore
 
         # Create the logger
         self.logger = Logger(
@@ -143,6 +139,8 @@ class OnPolicyRunner:
         saved_dict = self.alg.save()
         saved_dict["iter"] = self.current_learning_iteration
         saved_dict["infos"] = infos
+        if self.linvel_estimator is not None:
+            saved_dict["lin_vel_estimator_state_dict"] = self.linvel_estimator.state_dict()
         torch.save(saved_dict, path)
         # Upload model to external logging services
         self.logger.save_model(path, self.current_learning_iteration)
@@ -163,12 +161,21 @@ class OnPolicyRunner:
         load_iteration = self.alg.load(loaded_dict, load_cfg, strict)
         if load_iteration:
             self.current_learning_iteration = loaded_dict["iter"]
+        if self.linvel_estimator is not None and "lin_vel_estimator_state_dict" in loaded_dict:
+            self.linvel_estimator.load_state_dict(loaded_dict["lin_vel_estimator_state_dict"], strict=strict)
         return loaded_dict["infos"]
 
     def get_inference_policy(self, device: str | None = None) -> MLPModel:
         """Return the policy on the requested device for inference."""
         self.alg.eval_mode()  # Switch to evaluation mode (e.g. for dropout)
         return self.alg.get_policy().to(device)  # type: ignore
+
+    def get_inference_lin_vel_estimator(self, device: str | None = None) -> MLPModel | None:
+        """Return the linear velocity estimator on the requested device for inference, or None if not used."""
+        if self.linvel_estimator is None:
+            return None
+        self.linvel_estimator.eval()  # Switch to evaluation mode (e.g. for dropout)
+        return self.linvel_estimator.to(device)
 
     def export_policy_to_jit(self, path: str, filename: str = "policy.pt") -> None:
         """Export the model to a Torch JIT file."""
