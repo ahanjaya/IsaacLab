@@ -297,6 +297,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # obtain the trained policy for inference
     policy = runner.get_inference_policy(device=env.unwrapped.device)
+    lin_vel_estimator = runner.get_inference_lin_vel_estimator(device=env.unwrapped.device)
 
     # export the trained policy to JIT and ONNX formats
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
@@ -346,7 +347,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # reset environment
     obs = env.get_observations()
     timestep = 0
-    obs_pos_idx = 12
 
     # Set up viewport camera to track the robot
     if args_cli.follow_robot:
@@ -361,20 +361,24 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         start_time = time.time()
         # run everything in inference mode
         with torch.inference_mode():
+            # inject estimated linear velocity if estimator is available
+            if lin_vel_estimator is not None:
+                obs["estimated_lin_vel"] = lin_vel_estimator(obs["proprioceptive"])
             # agent stepping
             actions = policy(obs)
             # env stepping
             obs, _, dones, _ = env.step(actions)
-            obs_numpy = obs["policy"].detach().cpu().numpy()[0]
-            obs_pos_numpy = obs_numpy[obs_pos_idx : obs_pos_idx + 20]
-
-            actions_numpy = actions.detach().cpu().numpy()[0] * 0.5
-            actions_publish = actions.detach().cpu().numpy()[:12]
-
-            # actions_publish = obs["policy"].detach().cpu().numpy()[:, obs_pos_idx : obs_pos_idx + 12]
-
+            
             # publish actions via UDP
             if udp_socket is not None and args_cli.enable_udp:
+                obs_pos_idx = 9
+                obs_numpy = obs["proprioceptive"].detach().cpu().numpy()[0]
+                obs_pos_numpy = obs_numpy[obs_pos_idx : obs_pos_idx + 20]
+
+                actions_numpy = actions.detach().cpu().numpy()[0] * 0.5
+                actions_publish = actions.detach().cpu().numpy()[:12]
+                # actions_publish = obs["policy"].detach().cpu().numpy()[:, obs_pos_idx : obs_pos_idx + 12]
+
                 try:
                     # create data payload
                     data_payload = {"timestamp": time.time(), "timestep": timestep, "actions": actions_publish.tolist()}
