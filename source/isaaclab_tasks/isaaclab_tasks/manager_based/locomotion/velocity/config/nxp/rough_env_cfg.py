@@ -222,9 +222,9 @@ class NXPEvent(EventCfg):
                 "x": (-0.5, 0.5),
                 "y": (-0.5, 0.5),
                 "z": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
+                "roll": (-0.0, 0.0),
+                "pitch": (-0.0, 0.0),
+                "yaw": (-0.0, 0.0),
             },
         },
     )
@@ -251,7 +251,7 @@ class NXPEvent(EventCfg):
 class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     actions: NXPActions = NXPActions()
     rewards: NXPRewards = NXPRewards()
-    events: NXPEvent = NXPEvent()
+    # events: NXPEvent = NXPEvent()
 
     def __post_init__(self):
         # post init of parent
@@ -270,16 +270,10 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # Randomization
-        self.events.push_robot.params["velocity_range"] = {
-            "x": (-0.0, 0.0),
-            "y": (-0.0, 0.0),
-            "z": (-0.0, 0.0),
-            "roll": (-0.0, 0.0),
-            "pitch": (-0.0, 0.0),
-            "yaw": (-0.0, 0.0),
-        }
-        self.events.add_base_mass.params["mass_distribution_params"] = (-0.0, 0.0)
+        self.events.push_robot = None
+        self.events.add_base_mass = None
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+        self.events.base_external_force_torque.params["asset_cfg"].body_names = ["pelvis_link"]
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
@@ -291,6 +285,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "yaw": (0.0, 0.0),
             },
         }
+        self.events.base_com = None
 
         # Rewards inspired by isaac berkeley
         self.rewards.track_lin_vel_xy_exp.weight = 1.0
