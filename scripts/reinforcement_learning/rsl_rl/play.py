@@ -365,7 +365,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             actions = policy(obs)
             # env stepping
             obs, _, dones, _ = env.step(actions)
-            
+
             # publish actions via UDP
             if udp_socket is not None and args_cli.enable_udp:
                 obs_pos_idx = 9

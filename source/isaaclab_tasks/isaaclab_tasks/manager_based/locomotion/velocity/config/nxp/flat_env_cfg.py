@@ -62,7 +62,7 @@ class NXPFlatEnvCfg(NXPRoughEnvCfg):
         self.rewards.lin_vel_z_l2.weight = -2.0
         self.rewards.dof_torques_l2.weight = -2.5e-5
         self.rewards.feet_air_time.weight = 0.5
-        self.rewards.flat_orientation_l2.weight = -5.0
+        self.rewards.flat_orientation_l2.weight = -7.5
 
         # Commands
         self.commands.base_velocity.ranges.lin_vel_x = (-0.5, 1.0)
@@ -108,6 +108,6 @@ class NXPFlatEnvCfg_PLAY(NXPFlatEnvCfg):
                 True,
             ),  # Invert y and z axes for correct direction
             ranges=mdp.Se2GamepadVelocityCommandCfg.Ranges(
-                lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0)
+                lin_vel_x=(-0.5, 0.5), lin_vel_y=(-0.5, 0.5), ang_vel_z=(-1.0, 1.0)
             ),
         )
