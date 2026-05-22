@@ -39,6 +39,8 @@ parser.add_argument("--follow_robot", action="store_true", default=False, help="
 parser.add_argument("--udp_host", type=str, default="localhost", help="UDP host for publishing actions.")
 parser.add_argument("--udp_port", type=int, default=8888, help="UDP port for publishing actions.")
 parser.add_argument("--enable_udp", action="store_true", default=False, help="Enable UDP publishing of actions.")
+parser.add_argument("--use_jit", action="store_true", default=False, help="Use JIT-compiled policy for inference.")
+
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -299,27 +301,36 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # export the trained policy to JIT and ONNX formats
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
 
+    # extract the policy network and normalizer (common for all rsl-rl versions)
     if version.parse(installed_version) >= version.parse("4.0.0"):
-        # use the new export functions for rsl-rl >= 4.0.0
-        runner.export_policy_to_jit(path=export_model_dir, filename="policy.pt")
+        policy_nn = runner.alg.get_policy()
+    elif version.parse(installed_version) >= version.parse("2.3.0"):
+        policy_nn = runner.alg.policy
+    else:
+        policy_nn = runner.alg.actor_critic
+
+    if hasattr(policy_nn, "obs_normalizer"):
+        normalizer = policy_nn.obs_normalizer
+    elif hasattr(policy_nn, "actor_obs_normalizer"):
+        normalizer = policy_nn.actor_obs_normalizer
+    elif hasattr(policy_nn, "student_obs_normalizer"):
+        normalizer = policy_nn.student_obs_normalizer
+    else:
+        normalizer = None
+
+    # export to JIT — use custom exporter so lin_vel_estimator is embedded in the JIT model
+    # (the actor expects [est_lin_vel | proprioceptive] = 72D, but deployment sends 69D proprio only)
+    export_policy_as_jit(policy_nn, lin_vel_estimator, normalizer, path=export_model_dir, filename="policy.pt")
+
+    if args_cli.use_jit:
+        print("[INFO] Using JIT-compiled policy for inference.")
+        policy_jit = torch.jit.load(os.path.join(export_model_dir, "policy.pt"), map_location=env.unwrapped.device)
+    else:
+        print("[INFO] Using regular policy for inference (not JIT-compiled).")
+
+    if version.parse(installed_version) >= version.parse("4.0.0"):
         runner.export_policy_to_onnx(path=export_model_dir, filename="policy.onnx")
     else:
-        # extract the neural network for rsl-rl < 4.0.0
-        if version.parse(installed_version) >= version.parse("2.3.0"):
-            policy_nn = runner.alg.policy
-        else:
-            policy_nn = runner.alg.actor_critic
-
-        # extract the normalizer
-        if hasattr(policy_nn, "actor_obs_normalizer"):
-            normalizer = policy_nn.actor_obs_normalizer
-        elif hasattr(policy_nn, "student_obs_normalizer"):
-            normalizer = policy_nn.student_obs_normalizer
-        else:
-            normalizer = None
-
-        # export to JIT and ONNX
-        export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
         export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
     dt = env.unwrapped.step_dt
@@ -361,8 +372,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # inject estimated linear velocity if estimator is available
             if lin_vel_estimator is not None:
                 obs["estimated_lin_vel"] = lin_vel_estimator(obs["proprioceptive"])
+
             # agent stepping
-            actions = policy(obs)
+            if args_cli.use_jit:
+                # use JIT-compiled policy for inference
+                actions = policy_jit(obs["proprioceptive"])
+            else:
+                # use regular policy for inference
+                actions = policy(obs)
+
             # env stepping
             obs, _, dones, _ = env.step(actions)
 
@@ -417,10 +435,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             time.sleep(sleep_time)
 
         # print the frequency in this loop
-        end_time = time.time()
-        loop_dt = end_time - start_time
-        loop_freq = 1.0 / loop_dt if loop_dt > 0 else float("inf")
-        print(f"[INFO] Timestep: {timestep}, Loop Frequency: {loop_freq:.2f} Hz")
+        # end_time = time.time()
+        # loop_dt = end_time - start_time
+        # loop_freq = 1.0 / loop_dt if loop_dt > 0 else float("inf")
+        # print(f"[INFO] Timestep: {timestep}, Loop Frequency: {loop_freq:.2f} Hz")
 
     # close UDP socket if initialized
     if udp_socket is not None:

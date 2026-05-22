@@ -62,16 +62,27 @@ class _TorchPolicyExporter(torch.nn.Module):
             self.actor = copy.deepcopy(policy.student)
             if self.is_recurrent:
                 self.rnn = copy.deepcopy(policy.memory_s.rnn)
+        elif hasattr(policy, "mlp"):
+            # rsl-rl >= 5.0: MLPModel — combine mlp + deterministic_output into a single Sequential actor
+            mlp = copy.deepcopy(policy.mlp)
+            if policy.distribution is not None:
+                det_out = policy.distribution.as_deterministic_output_module()
+            else:
+                det_out = torch.nn.Identity()
+            self.actor = torch.nn.Sequential(mlp, det_out)
         else:
-            raise ValueError("Policy does not have an actor/student module.")
+            raise ValueError("Policy does not have an actor/student/mlp module.")
 
         # copy lin_vel_estimator network
         if hasattr(lin_vel_estimator, "linvel_estimator"):
-            # lin_vel_estimator is a LinVelEstimator object
+            # lin_vel_estimator is a LinVelEstimator object (old rsl-rl)
             self.lin_vel_estimator = copy.deepcopy(lin_vel_estimator.linvel_estimator)
         elif hasattr(lin_vel_estimator, "__self__") and hasattr(lin_vel_estimator.__self__, "linvel_estimator"):
-            # lin_vel_estimator is the act_inference method
+            # lin_vel_estimator is the act_inference method (old rsl-rl)
             self.lin_vel_estimator = copy.deepcopy(lin_vel_estimator.__self__.linvel_estimator)
+        elif isinstance(lin_vel_estimator, torch.nn.Module):
+            # rsl-rl >= 5.0: LinVelEstimatorModel is itself a plain nn.Module
+            self.lin_vel_estimator = copy.deepcopy(lin_vel_estimator)
         else:
             raise ValueError("lin_vel_estimator must be either a LinVelEstimator object or its act_inference method")
 
