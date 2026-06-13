@@ -136,6 +136,30 @@ SPHERE_MARKER_CFG = VisualizationMarkersCfg(
 )
 """Configuration for the sphere marker."""
 
+BLUE_SPHERE_MARKER_CFG = VisualizationMarkersCfg(
+    markers={
+        "sphere": sim_utils.SphereCfg(
+            radius=0.05,
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 1.0)),
+        ),
+    }
+)
+"""Configuration for the blue sphere marker."""
+
+
+GREEN_SPHERE_MARKER_CFG = VisualizationMarkersCfg(
+    markers={
+        "sphere": sim_utils.SphereCfg(
+            radius=0.05,
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
+        ),
+    }
+)
+"""Configuration for the green sphere marker."""
+
+
+
+
 POSITION_GOAL_MARKER_CFG = VisualizationMarkersCfg(
     markers={
         "target_far": sim_utils.SphereCfg(

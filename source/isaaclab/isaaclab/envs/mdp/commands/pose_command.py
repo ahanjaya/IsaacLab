@@ -20,7 +20,7 @@ from isaaclab.utils.math import combine_frame_transforms, compute_pose_error, qu
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
-    from .commands_cfg import UniformPoseCommandCfg
+    from .commands_cfg import UniformPoseCommandCfg, UniformPositionCommandCfg
 
 
 class UniformPoseCommand(CommandTerm):
@@ -154,3 +154,94 @@ class UniformPoseCommand(CommandTerm):
         # -- current body pose
         body_link_pose_w = self.robot.data.body_link_pose_w[:, self.body_idx]
         self.current_pose_visualizer.visualize(body_link_pose_w[:, :3], body_link_pose_w[:, 3:7])
+
+
+class UniformPositionCommand(CommandTerm):
+    """Command generator for generating position-only commands uniformly.
+
+    The command generator samples target positions uniformly within specified regions in
+    cartesian space. Unlike :class:`UniformPoseCommand`, no orientation command is generated.
+
+    The position commands are generated in the base frame of the robot.
+    """
+
+    cfg: UniformPositionCommandCfg
+    """Configuration for the command generator."""
+
+    def __init__(self, cfg: UniformPositionCommandCfg, env: ManagerBasedEnv):
+        """Initialize the command generator class.
+
+        Args:
+            cfg: The configuration parameters for the command generator.
+            env: The environment object.
+        """
+        super().__init__(cfg, env)
+
+        # extract the robot and body index for which the command is generated
+        self.robot: Articulation = env.scene[cfg.asset_name]
+        self.body_idx = self.robot.find_bodies(cfg.body_name)[0][0]
+
+        # create buffers
+        # -- commands: (x, y, z) in root frame
+        self.pos_command_b = torch.zeros(self.num_envs, 3, device=self.device)
+        self.pos_command_w = torch.zeros_like(self.pos_command_b)
+        # -- metrics
+        self.metrics["position_error"] = torch.zeros(self.num_envs, device=self.device)
+
+    def __str__(self) -> str:
+        msg = "UniformPositionCommand:\n"
+        msg += f"\tCommand dimension: {tuple(self.command.shape[1:])}\n"
+        msg += f"\tResampling time range: {self.cfg.resampling_time_range}\n"
+        return msg
+
+    """
+    Properties
+    """
+
+    @property
+    def command(self) -> torch.Tensor:
+        """The desired position command. Shape is (num_envs, 3)."""
+        return self.pos_command_b
+
+    """
+    Implementation specific functions.
+    """
+
+    def _update_metrics(self):
+        # transform command from base frame to simulation world frame
+        self.pos_command_w, _ = combine_frame_transforms(
+            self.robot.data.root_pos_w,
+            self.robot.data.root_quat_w,
+            self.pos_command_b,
+        )
+        # compute position error
+        pos_error = self.pos_command_w - self.robot.data.body_pos_w[:, self.body_idx]
+        self.metrics["position_error"] = torch.norm(pos_error, dim=-1)
+
+    def _resample_command(self, env_ids: Sequence[int]):
+        r = torch.empty(len(env_ids), device=self.device)
+        self.pos_command_b[env_ids, 0] = r.uniform_(*self.cfg.ranges.pos_x)
+        self.pos_command_b[env_ids, 1] = r.uniform_(*self.cfg.ranges.pos_y)
+        self.pos_command_b[env_ids, 2] = r.uniform_(*self.cfg.ranges.pos_z)
+
+    def _update_command(self):
+        pass
+
+    def _set_debug_vis_impl(self, debug_vis: bool):
+        if debug_vis:
+            if not hasattr(self, "goal_pos_visualizer"):
+                self.goal_pos_visualizer = VisualizationMarkers(self.cfg.goal_pos_visualizer_cfg)
+                self.current_pos_visualizer = VisualizationMarkers(self.cfg.current_pos_visualizer_cfg)
+            self.goal_pos_visualizer.set_visibility(True)
+            self.current_pos_visualizer.set_visibility(True)
+        else:
+            if hasattr(self, "goal_pos_visualizer"):
+                self.goal_pos_visualizer.set_visibility(False)
+                self.current_pos_visualizer.set_visibility(False)
+
+    def _debug_vis_callback(self, event):
+        if not self.robot.is_initialized:
+            return
+        self.goal_pos_visualizer.visualize(self.pos_command_w)
+        body_link_pose_w = self.robot.data.body_link_pose_w[:, self.body_idx]
+        self.current_pos_visualizer.visualize(body_link_pose_w[:, :3])

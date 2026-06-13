@@ -8,12 +8,12 @@ from dataclasses import MISSING
 
 from isaaclab.managers import CommandTermCfg
 from isaaclab.markers import VisualizationMarkersCfg
-from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, FRAME_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
+from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, FRAME_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG, BLUE_SPHERE_MARKER_CFG, GREEN_SPHERE_MARKER_CFG
 from isaaclab.utils import configclass
 
 from .null_command import NullCommand
 from .pose_2d_command import TerrainBasedPose2dCommand, UniformPose2dCommand
-from .pose_command import UniformPoseCommand
+from .pose_command import UniformPoseCommand, UniformPositionCommand
 from .velocity_command import NormalVelocityCommand, UniformVelocityCommand
 
 
@@ -183,6 +183,47 @@ class UniformPoseCommandCfg(CommandTermCfg):
     # Set the scale of the visualization markers to (0.1, 0.1, 0.1)
     goal_pose_visualizer_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
     current_pose_visualizer_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
+
+
+@configclass
+class UniformPositionCommandCfg(CommandTermCfg):
+    """Configuration for uniform position-only command generator."""
+
+    class_type: type = UniformPositionCommand
+
+    asset_name: str = MISSING
+    """Name of the asset in the environment for which the commands are generated."""
+
+    body_name: str = MISSING
+    """Name of the body in the asset for which the commands are generated."""
+
+    @configclass
+    class Ranges:
+        """Uniform distribution ranges for the position commands."""
+
+        pos_x: tuple[float, float] = MISSING
+        """Range for the x position (in m)."""
+
+        pos_y: tuple[float, float] = MISSING
+        """Range for the y position (in m)."""
+
+        pos_z: tuple[float, float] = MISSING
+        """Range for the z position (in m)."""
+
+    ranges: Ranges = MISSING
+    """Ranges for the position commands."""
+
+    goal_pos_visualizer_cfg: VisualizationMarkersCfg = GREEN_SPHERE_MARKER_CFG.replace(
+        prim_path="/Visuals/Command/goal_position"
+    )
+    goal_pos_visualizer_cfg.markers["sphere"].radius = 0.025
+    """The configuration for the goal position visualization marker. Defaults to SPHERE_MARKER_CFG."""
+
+    current_pos_visualizer_cfg: VisualizationMarkersCfg = BLUE_SPHERE_MARKER_CFG.replace(
+        prim_path="/Visuals/Command/body_position"
+    )
+    current_pos_visualizer_cfg.markers["sphere"].radius = 0.025
+    """The configuration for the current body position visualization marker. Defaults to SPHERE_MARKER_CFG."""
 
 
 @configclass

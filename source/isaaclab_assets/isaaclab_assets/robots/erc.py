@@ -8,7 +8,7 @@
 import os
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import IdealPDActuatorCfg
+from isaaclab.actuators import IdealPDActuatorCfg, ImplicitActuatorCfg, DelayedPDActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 ##
@@ -242,6 +242,101 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
         #     effort_limit_sim=5.0,
         #     stiffness=20.0,
         #     damping=5.0,
+        # ),
+    },
+)
+
+NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=os.path.join(
+            os.getcwd(),
+            NXP_DIR,
+            "nxp_v1_upper_body/nxp_v1_upper_body.usd",
+        ),
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            # disable_gravity=False,
+            # retain_accelerations=False,
+            # linear_damping=0.0,
+            # angular_damping=0.0,
+            # max_linear_velocity=1000.0,
+            # max_angular_velocity=1000.0,
+            # max_depenetration_velocity=1.0,
+            max_depenetration_velocity=5.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=False,
+            solver_position_iteration_count=4,
+            solver_velocity_iteration_count=4,
+            # fix_root_link=True,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        joint_pos={
+            # "left_shoulder_pitch_joint": 0.0,
+            "right_shoulder_pitch_joint": 0.0,
+            # "left_shoulder_roll_joint": 0.0,
+            "right_shoulder_roll_joint": 0.0,
+            # "left_shoulder_yaw_joint": 0.0,
+            "right_shoulder_yaw_joint": 0.0,
+            # "left_elbow_joint": 0.0,
+            "right_elbow_joint": 0.0,
+            # "head_pan_joint": 0.0,
+            # "head_tilt_joint": 0.0,
+        },
+    ),
+    soft_joint_pos_limit_factor=0.9,
+    actuators={
+        # "arm": IdealPDActuatorCfg(
+        #     joint_names_expr=[".*"],
+        #     effort_limit_sim=17.0,
+        #     velocity_limit_sim=37.68,
+        #     stiffness=17.0,
+        #     damping=1.0,
+        # ),
+        "arm": DelayedPDActuatorCfg(
+            joint_names_expr=[".*"],
+            effort_limit_sim=17.0,
+            velocity_limit_sim=37.68,
+            stiffness=17.0,
+            damping=1.0,
+            armature=0.0042,
+            min_delay=3,
+            max_delay=3,
+        ),
+        # "arm": ImplicitActuatorCfg(
+        #     joint_names_expr=[".*"],
+        #     effort_limit_sim=17.0,
+        #     stiffness=17.0,
+        #     damping=1.0,
+        # ),
+        # "shoulder_pitch": IdealPDActuatorCfg(
+        #     joint_names_expr=[".*_shoulder_pitch_.*"],
+        #     effort_limit=17.0,
+        #     velocity_limit=37.68,
+        #     stiffness=10.0,
+        #     damping=1.0,
+        # ),
+        # "shoulder_roll": IdealPDActuatorCfg(
+        #     joint_names_expr=[".*_shoulder_roll_.*"],
+        #     effort_limit=17.0,
+        #     velocity_limit=37.68,
+        #     stiffness=10.0,
+        #     damping=1.0,
+        # ),
+        # "shoulder_yaw": IdealPDActuatorCfg(
+        #     joint_names_expr=[".*_shoulder_yaw_.*"],
+        #     effort_limit=17.0,
+        #     velocity_limit=37.68,
+        #     stiffness=5.0,
+        #     damping=0.1,
+        # ),
+        # "elbow": IdealPDActuatorCfg(
+        #     joint_names_expr=[".*_elbow_.*"],
+        #     effort_limit=17.0,
+        #     velocity_limit=37.68,
+        #     stiffness=5.0,
+        #     damping=0.1,
         # ),
     },
 )
