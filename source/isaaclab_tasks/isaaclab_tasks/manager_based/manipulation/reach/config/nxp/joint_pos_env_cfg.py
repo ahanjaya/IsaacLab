@@ -5,6 +5,7 @@
 
 from dataclasses import MISSING
 
+from isaaclab.managers import SceneEntityCfg as SceneEntity
 from isaaclab.utils import configclass
 
 import isaaclab_tasks.manager_based.manipulation.reach.mdp as mdp
@@ -20,6 +21,36 @@ from isaaclab_assets import NXP_V1_UPPER_BODY_CFG  # isort: skip
 # Environment configuration
 ##
 
+# Joint names for NXP humanoid
+NXP_JOINT_NAMES = [
+    # "left_shoulder_pitch_joint",
+    "right_shoulder_pitch_joint",
+    # "left_shoulder_roll_joint",
+    "right_shoulder_roll_joint",
+    # "left_shoulder_yaw_joint",
+    "right_shoulder_yaw_joint",
+    # "left_elbow_joint",
+    "right_elbow_joint",
+]
+
+
+@configclass
+class ActionsCfg:
+    """Action specifications for the MDP."""
+
+    joint_pos = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=NXP_JOINT_NAMES,
+        scale=0.5,
+        preserve_order=True,
+        use_default_offset=True,
+        clip={
+            "right_shoulder_pitch_joint": (-1.570796, 1.570796),
+            "right_shoulder_roll_joint": (-0.087266, 3.141592),
+            "right_shoulder_yaw_joint": (-1.570796, 1.570796),
+            "right_elbow_joint": (-1.570796, -0.087266),
+        },
+    )
 
 @configclass
 class CommandsCfg:
@@ -41,6 +72,7 @@ class CommandsCfg:
 @configclass
 class NXPReachEnvCfg(ReachEnvCfg):
     commands: CommandsCfg = CommandsCfg()
+    actions: ActionsCfg = ActionsCfg()
 
     def __post_init__(self):
         # post init of parent
@@ -55,17 +87,23 @@ class NXPReachEnvCfg(ReachEnvCfg):
 
         # switch robot to nxp
         self.scene.robot = NXP_V1_UPPER_BODY_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
         # override events
-        self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)
+        self.events.reset_robot_joints.params["position_range"] = (0.9, 1.1)
         # override rewards
         self.rewards.end_effector_position_tracking.params["asset_cfg"].body_names = ["right_ee_link"]
         self.rewards.end_effector_position_tracking_fine_grained.params["asset_cfg"].body_names = ["right_ee_link"]
         # self.rewards.end_effector_position_tracking_fine_grained.weight = 0.2
         self.rewards.end_effector_orientation_tracking = None
-        # override actions
-        self.actions.arm_action = mdp.JointPositionActionCfg(
-            asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True
+
+        # observation
+        self.observations.policy.joint_pos.params["asset_cfg"] = SceneEntity(
+            "robot", joint_names=NXP_JOINT_NAMES, preserve_order=True
         )
+        self.observations.policy.joint_vel.params["asset_cfg"] = SceneEntity(
+            "robot", joint_names=NXP_JOINT_NAMES, preserve_order=True
+        )
+
         # override command generator body
         self.commands.ee_pose.body_name = "right_ee_link"
 
@@ -81,3 +119,4 @@ class NXPReachEnvCfg_PLAY(NXPReachEnvCfg):
         self.episode_length_s = 3000.0
         # disable randomization for play
         self.observations.policy.enable_corruption = False
+        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
