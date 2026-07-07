@@ -13,7 +13,7 @@ class NXPReachPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 1000
     save_interval = 500
-    experiment_name = "reach_nxp"
+    experiment_name = "nxp_reach"
     run_name = ""
     resume = False
     empirical_normalization = False

@@ -39,6 +39,7 @@ parser.add_argument("--follow_robot", action="store_true", default=False, help="
 parser.add_argument("--udp_host", type=str, default="localhost", help="UDP host for publishing actions.")
 parser.add_argument("--udp_port", type=int, default=8888, help="UDP port for publishing actions.")
 parser.add_argument("--enable_udp", action="store_true", default=False, help="Enable UDP publishing of actions.")
+parser.add_argument("--use_jit", action="store_true", default=False, help="Use JIT for policy inference.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -325,6 +326,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dt = env.unwrapped.step_dt
     print(f"[INFO] Environment step dt: {dt:.4f} seconds.")
 
+    if args_cli.use_jit:
+        print("[INFO] Using JIT for policy inference.")
+        policy = torch.jit.load(os.path.join(export_model_dir, "policy.pt")).to(env.unwrapped.device)
+
     if args_cli.plot:
         # Start the plotting function in a separate process
         queue = mp.Queue()
@@ -362,10 +367,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             if lin_vel_estimator is not None:
                 obs["estimated_lin_vel"] = lin_vel_estimator(obs["proprioceptive"])
             # agent stepping
-            actions = policy(obs)
+            # JIT-exported _TorchMLPModel.forward(x: Tensor) expects pre-concatenated obs, not TensorDict
+            if args_cli.use_jit:
+                cmd = env.unwrapped.command_manager.get_command("ee_pose")[0].cpu().numpy()
+                # print(f"[INFO] Env 0 command pose (x, y, z): {cmd}")
+                current_joint_pos = obs["policy"][:, 0 : 4].cpu().numpy() + np.array([0.0, 0.0436, 0.1209, -0.1745])  # Assuming no offset for NXP robot
+                # print(f"[INFO] Env 0 current joint positions: {current_joint_pos[0]}")
+
+                prev_actions = obs["policy"][:, 11:].cpu().numpy()
+                # print(f"[INFO] Env 0 previous actions: {prev_actions[0]}")
+                actions = policy(obs["policy"])
+            else:
+                actions = policy(obs)
+            
+            # print(f"[INFO] Env 0 actions: {actions.detach().cpu().numpy()[0] * 0.5 + np.array([0.0, 0.0436, 0.1209, -0.1745])}")  # Assuming no offset for NXP robot
             # env stepping
             obs, _, dones, _ = env.step(actions)
-            
+
             # publish actions via UDP
             if udp_socket is not None and args_cli.enable_udp:
                 obs_pos_idx = 9
@@ -388,7 +406,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
             # reset recurrent states for episodes that have terminated
             if version.parse(installed_version) >= version.parse("4.0.0"):
-                policy.reset(dones)
+                if args_cli.use_jit:
+                    policy.reset()
+                else:
+                    policy.reset(dones)
             else:
                 policy_nn.reset(dones)
 
@@ -420,7 +441,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         end_time = time.time()
         loop_dt = end_time - start_time
         loop_freq = 1.0 / loop_dt if loop_dt > 0 else float("inf")
-        print(f"[INFO] Timestep: {timestep}, Loop Frequency: {loop_freq:.2f} Hz")
+        # print(f"[INFO] Timestep: {timestep}, Loop Frequency: {loop_freq:.2f} Hz")
 
     # close UDP socket if initialized
     if udp_socket is not None:

@@ -8,7 +8,7 @@
 import os
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import IdealPDActuatorCfg, ImplicitActuatorCfg, DelayedPDActuatorCfg
+from isaaclab.actuators import DelayedPDActuatorCfg, IdealPDActuatorCfg, ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 ##
@@ -265,10 +265,10 @@ NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
             max_depenetration_velocity=5.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=False,
-            solver_position_iteration_count=4,
-            solver_velocity_iteration_count=4,
-            # fix_root_link=True,
+            enabled_self_collisions=True,
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=8,
+            fix_root_link=True,
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
@@ -276,14 +276,15 @@ NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
             # "left_shoulder_pitch_joint": 0.0,
             "right_shoulder_pitch_joint": 0.0,
             # "left_shoulder_roll_joint": 0.0,
-            "right_shoulder_roll_joint": 0.0,
+            "right_shoulder_roll_joint": 0.0436,
             # "left_shoulder_yaw_joint": 0.0,
-            "right_shoulder_yaw_joint": 0.0,
+            "right_shoulder_yaw_joint": 0.1309,
             # "left_elbow_joint": 0.0,
-            "right_elbow_joint": 0.0,
+            "right_elbow_joint": -0.1745,
             # "head_pan_joint": 0.0,
             # "head_tilt_joint": 0.0,
         },
+        joint_vel={".*": 0.0},
     ),
     soft_joint_pos_limit_factor=0.9,
     actuators={
@@ -293,15 +294,26 @@ NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
         #     velocity_limit_sim=37.68,
         #     stiffness=17.0,
         #     damping=1.0,
+        #     armature=0.0042,
         # ),
         "arm": DelayedPDActuatorCfg(
-            joint_names_expr=[".*"],
+            joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
             effort_limit_sim=17.0,
             velocity_limit_sim=37.68,
             stiffness=17.0,
             damping=1.0,
             armature=0.0042,
-            min_delay=3,
+            min_delay=0,
+            max_delay=3,
+        ),
+        "head": DelayedPDActuatorCfg(
+            joint_names_expr=["head_.*"],
+            effort_limit_sim=5.0,
+            velocity_limit_sim=27.22,
+            stiffness=5.0,
+            damping=0.1,
+            armature=0.001,
+            min_delay=0,
             max_delay=3,
         ),
         # "arm": ImplicitActuatorCfg(
