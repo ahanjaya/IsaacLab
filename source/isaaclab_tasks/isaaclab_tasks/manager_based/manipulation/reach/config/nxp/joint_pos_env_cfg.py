@@ -62,9 +62,9 @@ class CommandsCfg:
         resampling_time_range=(4.0, 4.0),
         debug_vis=True,
         ranges=mdp.UniformPositionCommandCfg.Ranges(
-            pos_x=(0.25, 0.4),
-            pos_y=(-0.45, -0.15),
-            pos_z=(0.05, 0.4),
+            pos_x=(0.2, 0.4),
+            pos_y=(-0.5, -0.1),
+            pos_z=(0.05, 0.5),
         ),
     )
 
@@ -90,6 +90,7 @@ class NXPReachEnvCfg(ReachEnvCfg):
 
         # override events
         self.events.reset_robot_joints.params["position_range"] = (0.9, 1.1)
+
         # override rewards
         self.rewards.end_effector_position_tracking.params["asset_cfg"].body_names = ["right_ee_link"]
         self.rewards.end_effector_position_tracking_fine_grained.params["asset_cfg"].body_names = ["right_ee_link"]
