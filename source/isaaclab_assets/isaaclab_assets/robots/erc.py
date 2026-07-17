@@ -8,7 +8,7 @@
 import os
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import DelayedPDActuatorCfg, IdealPDActuatorCfg, ImplicitActuatorCfg
+from isaaclab.actuators import DelayedPDActuatorCfg, IdealPDActuatorCfg, PaceDCMotorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 
 ##
@@ -296,15 +296,65 @@ NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
         #     damping=1.0,
         #     armature=0.0042,
         # ),
-        "arm": DelayedPDActuatorCfg(
+        # "arm": DelayedPDActuatorCfg(
+        #     joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
+        #     effort_limit_sim=17.0,
+        #     velocity_limit_sim=37.68,
+        #     stiffness=17.0,
+        #     damping=1.0,
+        #     armature=0.0042,
+        #     min_delay=0,
+        #     max_delay=3,
+        # ),
+        "arm": PaceDCMotorCfg(
             joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
-            effort_limit_sim=17.0,
-            velocity_limit_sim=37.68,
-            stiffness=17.0,
-            damping=1.0,
-            armature=0.0042,
-            min_delay=0,
-            max_delay=3,
+            saturation_effort=17.0,
+            effort_limit=17.0,
+            velocity_limit=37.68,
+            stiffness={
+                ".*_shoulder_pitch_.*": 261.182526,
+                ".*_shoulder_roll_.*": 499.980774,
+                ".*_shoulder_yaw_.*": 499.992981,
+                ".*_elbow_.*": 499.990448,
+            },  # P gain in Nm/rad
+            damping={
+                ".*_shoulder_pitch_.*": 1.164000,
+                ".*_shoulder_roll_.*": 3.923899,
+                ".*_shoulder_yaw_.*": 1.682629,
+                ".*_elbow_.*": 2.220517,
+            },  # D gain in Nm s/rad
+            # --- Identified parameters ---
+            encoder_bias={
+                ".*_shoulder_pitch_.*": -0.099977,
+                ".*_shoulder_roll_.*": -0.099993,
+                ".*_shoulder_yaw_.*": -0.002818,
+                ".*_elbow_.*": -0.099986,
+            },  # encoder bias in radians
+            armature={
+                ".*_shoulder_pitch_.*": 0.013834,
+                ".*_shoulder_roll_.*": 0.031562,
+                ".*_shoulder_yaw_.*": 0.000337,
+                ".*_elbow_.*": 0.075580,
+            },  # rotor inertia (kg m^2)
+            friction={
+                ".*_shoulder_pitch_.*": 0.499951,
+                ".*_shoulder_roll_.*": 0.101055,
+                ".*_shoulder_yaw_.*": 0.499936,
+                ".*_elbow_.*": 0.499894,
+            },  # static (Coulomb) friction coefficient (Nm)
+            dynamic_friction={
+                ".*_shoulder_pitch_.*": 0.499951,
+                ".*_shoulder_roll_.*": 0.101055,
+                ".*_shoulder_yaw_.*": 0.499936,
+                ".*_elbow_.*": 0.499894,
+            },  # dynamic friction coefficient (Nm); equal to static for Coulomb model
+            viscous_friction={
+                ".*_shoulder_pitch_.*": 1.253000,
+                ".*_shoulder_roll_.*": 0.279301,
+                ".*_shoulder_yaw_.*": 3.245217,
+                ".*_elbow_.*": 1.600798,
+            },  # viscous friction coefficient (Nm s/rad)
+            max_delay=0,  # identified delay: round(0.5101752281188965 steps) = 0 sim steps
         ),
         "head": DelayedPDActuatorCfg(
             joint_names_expr=["head_.*"],

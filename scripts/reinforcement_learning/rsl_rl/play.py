@@ -369,18 +369,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # agent stepping
             # JIT-exported _TorchMLPModel.forward(x: Tensor) expects pre-concatenated obs, not TensorDict
             if args_cli.use_jit:
-                cmd = env.unwrapped.command_manager.get_command("ee_pose")[0].cpu().numpy()
-                # print(f"[INFO] Env 0 command pose (x, y, z): {cmd}")
-                current_joint_pos = obs["policy"][:, 0 : 4].cpu().numpy() + np.array([0.0, 0.0436, 0.1209, -0.1745])  # Assuming no offset for NXP robot
-                # print(f"[INFO] Env 0 current joint positions: {current_joint_pos[0]}")
-
-                prev_actions = obs["policy"][:, 11:].cpu().numpy()
-                # print(f"[INFO] Env 0 previous actions: {prev_actions[0]}")
                 actions = policy(obs["policy"])
             else:
                 actions = policy(obs)
-            
-            # print(f"[INFO] Env 0 actions: {actions.detach().cpu().numpy()[0] * 0.5 + np.array([0.0, 0.0436, 0.1209, -0.1745])}")  # Assuming no offset for NXP robot
+
             # env stepping
             obs, _, dones, _ = env.step(actions)
 
