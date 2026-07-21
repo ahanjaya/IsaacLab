@@ -12,6 +12,8 @@ import torch.optim as optim
 from itertools import chain
 from tensordict import TensorDict
 
+from isaaclab_rl.rsl_rl.rl_cfg import L2C2Cfg
+
 from rsl_rl.env import VecEnv
 from rsl_rl.extensions import RandomNetworkDistillation, resolve_rnd_config, resolve_symmetry_config
 from rsl_rl.models import MLPModel
@@ -38,6 +40,7 @@ class PPO:
         critic: MLPModel,
         storage: RolloutStorage,
         lin_vel_estimator: MLPModel | None = None,
+        l2c2_cfg: L2C2Cfg | None = None,
         num_learning_epochs: int = 5,
         num_mini_batches: int = 4,
         clip_param: float = 0.2,
@@ -118,6 +121,7 @@ class PPO:
             chain(self.actor.parameters(), self.critic.parameters()), lr=learning_rate
         )  # type: ignore
 
+        # Lin Vel Estimator components
         self.lin_vel_estimator = lin_vel_estimator
 
         if self.lin_vel_estimator is not None:
@@ -125,6 +129,22 @@ class PPO:
             self.lin_vel_estimator_optimizer = optim.Adam(
                 self.lin_vel_estimator.parameters(), lr=self.lin_vel_estimator.learning_rate
             )
+
+        # L2C2 components
+        self.l2c2_cfg = l2c2_cfg
+        if self.l2c2_cfg is not None:
+            print("Using L2C2 regularization.")
+            self.l2c2_epsilon = (l2c2_cfg["sigma"] * l2c2_cfg["lambda_under"]) / (
+                l2c2_cfg["lambda_upper"] - l2c2_cfg["sigma"] * l2c2_cfg["lambda_under"]
+            )
+            self.l2c2_lambda_actor = l2c2_cfg["lambda_upper"] * self.l2c2_epsilon
+        else:
+            self.l2c2_epsilon = None
+            self.l2c2_lambda_actor = None
+
+        self._prev_actor_input: torch.Tensor | None = None
+        self._prev_critic_input: torch.Tensor | None = None
+        self._prev_input_valid: torch.Tensor | None = None
 
         # Losses
         self.l2_loss = nn.MSELoss()
@@ -148,6 +168,29 @@ class PPO:
         self.learning_rate = learning_rate
         self.normalize_advantage_per_mini_batch = normalize_advantage_per_mini_batch
 
+    def _get_model_input(self, model: MLPModel, obs: TensorDict) -> torch.Tensor:
+        """Concatenate the observation groups consumed by a model without applying model-specific transforms."""
+        return torch.cat([obs[obs_group] for obs_group in model.obs_groups], dim=-1)
+
+    def _masked_mse(
+        self,
+        left: torch.Tensor,
+        right: torch.Tensor,
+        masks: torch.Tensor | None = None,
+        valid_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Compute an MSE reduction that ignores invalid recurrent samples when masks are provided."""
+        sample_loss = (left - right).pow(2).mean(dim=-1)
+        combined_mask = None
+        if masks is not None:
+            combined_mask = masks.to(sample_loss.dtype)
+        if valid_mask is not None:
+            valid_mask = valid_mask.squeeze(-1).to(sample_loss.dtype)
+            combined_mask = valid_mask if combined_mask is None else combined_mask * valid_mask
+        if combined_mask is None:
+            return sample_loss.mean()
+        return (sample_loss * combined_mask).sum() / combined_mask.sum().clamp_min(1.0)
+
     def act(self, obs: TensorDict) -> torch.Tensor:
         """Sample actions and store transition data."""
         # Record the hidden states for recurrent policies
@@ -155,6 +198,29 @@ class PPO:
 
         if self.lin_vel_estimator:
             obs["estimated_lin_vel"] = self.lin_vel_estimator(obs["proprioceptive"]).detach()
+
+        # Record the previous actor & critic input for L2C2 loss
+        if self.l2c2_cfg is not None:
+            actor_input = self._get_model_input(self.actor, obs).detach()
+            critic_input = self._get_model_input(self.critic, obs).detach()
+            self.transition.prev_actor_input = (
+                self._prev_actor_input if self._prev_actor_input is not None else torch.zeros_like(actor_input)
+            )
+            self.transition.prev_critic_input = (
+                self._prev_critic_input if self._prev_critic_input is not None else torch.zeros_like(critic_input)
+            )
+            self.transition.prev_input_valid = (
+                self._prev_input_valid
+                if self._prev_input_valid is not None
+                else torch.zeros(actor_input.shape[0], 1, device=self.device, dtype=torch.bool)
+            )
+            self._prev_actor_input = actor_input
+            self._prev_critic_input = critic_input
+            self._prev_input_valid = torch.ones(actor_input.shape[0], 1, device=self.device, dtype=torch.bool)
+        else:
+            self.transition.prev_actor_input = None
+            self.transition.prev_critic_input = None
+            self.transition.prev_input_valid = None
 
         # Compute the actions and values
         self.transition.actions = self.actor(obs, stochastic_output=True).detach()
@@ -235,6 +301,8 @@ class PPO:
         mean_rnd_loss = 0 if self.rnd else None
         # Symmetry loss
         mean_symmetry_loss = 0 if self.symmetry else None
+        # L2C2 loss
+        mean_l2c2_loss = 0 if self.l2c2_cfg else None
 
         # Get mini batch generator
         if self.actor.is_recurrent or self.critic.is_recurrent:
@@ -284,6 +352,7 @@ class PPO:
                 hidden_state=batch.hidden_states[0],
                 stochastic_output=True,
             )
+            actions_mean = self.actor.output_mean  # type: ignore
             actions_log_prob = self.actor.get_output_log_prob(batch.actions)  # type: ignore
             values = self.critic(batch.observations, masks=batch.masks, hidden_state=batch.hidden_states[1])
             # Note: We only keep the distribution parameters and entropy of the first augmentation (the original one)
@@ -335,6 +404,42 @@ class PPO:
             else:
                 value_loss = (batch.returns - values).pow(2).mean()
 
+            # L2C2 loss on the actor/critic inputs stored during rollout collection.
+            if self.l2c2_cfg and batch.prev_input_valid is not None:
+                actor_input = self._get_model_input(self.actor, batch.observations)
+                critic_input = self._get_model_input(self.critic, batch.observations)
+
+                near_actor_input = (
+                    batch.prev_actor_input
+                    + (actor_input - batch.prev_actor_input) * torch.rand_like(actor_input) * self.l2c2_cfg["sigma"]
+                )
+                near_critic_input = (
+                    batch.prev_critic_input
+                    + (critic_input - batch.prev_critic_input) * torch.rand_like(critic_input) * self.l2c2_cfg["sigma"]
+                )
+                near_actor_output = self.actor.mlp(near_actor_input)
+                near_critic_output = self.critic.mlp(near_critic_input)
+
+                actor_input_diff = self._masked_mse(
+                    actor_input, batch.prev_actor_input, batch.masks, batch.prev_input_valid
+                )
+                critic_input_diff = self._masked_mse(
+                    critic_input, batch.prev_critic_input, batch.masks, batch.prev_input_valid
+                )
+                near_actor_output_diff = self._masked_mse(
+                    near_actor_output, actions_mean, batch.masks, batch.prev_input_valid
+                )
+                near_critic_output_diff = self._masked_mse(
+                    near_critic_output, values, batch.masks, batch.prev_input_valid
+                )
+
+                l2c2_actor_loss = self.l2c2_lambda_actor * (near_actor_output_diff / actor_input_diff)
+                l2c2_lambda_value = self.l2c2_lambda_actor * self.l2c2_cfg["beta"]
+                l2c2_value_loss = l2c2_lambda_value * (near_critic_output_diff / critic_input_diff)
+                l2c2_loss = l2c2_actor_loss + l2c2_value_loss
+            else:
+                l2c2_loss = None
+
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy.mean()
 
             # Symmetry loss
@@ -369,6 +474,10 @@ class PPO:
                     loss += self.symmetry["mirror_loss_coeff"] * symmetry_loss
                 else:
                     symmetry_loss = symmetry_loss.detach()
+
+            # L2C2 loss
+            if l2c2_loss is not None:
+                loss += l2c2_loss
 
             # RND loss
             if self.rnd:
@@ -427,6 +536,9 @@ class PPO:
             # Symmetry loss
             if mean_symmetry_loss is not None:
                 mean_symmetry_loss += symmetry_loss.item()
+            # L2C2 loss
+            if mean_l2c2_loss is not None and l2c2_loss is not None:
+                mean_l2c2_loss += l2c2_loss.item()
 
         # Divide the losses by the number of updates
         num_updates = self.num_learning_epochs * self.num_mini_batches
@@ -439,6 +551,8 @@ class PPO:
             mean_rnd_loss /= num_updates
         if mean_symmetry_loss is not None:
             mean_symmetry_loss /= num_updates
+        if mean_l2c2_loss is not None:
+            mean_l2c2_loss /= num_updates
 
         # Clear the storage
         self.storage.clear()
@@ -455,6 +569,8 @@ class PPO:
             loss_dict["rnd"] = mean_rnd_loss
         if self.symmetry:
             loss_dict["symmetry"] = mean_symmetry_loss
+        if self.l2c2_cfg:
+            loss_dict["l2c2"] = mean_l2c2_loss
 
         return loss_dict
 
@@ -564,8 +680,13 @@ class PPO:
             lin_vel_estimator = lin_vel_estimator_class(input_dim, output_dim, **cfg["lin_vel_estimator"]).to(device)
             print(f"Linear Velocity Estimator Model: {lin_vel_estimator}")
 
+        # L2C2 configuration
+        l2c2_cfg = cfg.get("l2c2")
+
         # Initialize the storage
-        storage = RolloutStorage("rl", env.num_envs, cfg["num_steps_per_env"], obs, [env.num_actions], device)
+        storage = RolloutStorage(
+            "rl", env.num_envs, cfg["num_steps_per_env"], obs, [env.num_actions], actor.obs_dim, critic.obs_dim, device
+        )
 
         # Initialize the algorithm
         alg: PPO = alg_class(
@@ -573,6 +694,7 @@ class PPO:
             critic,
             storage,
             lin_vel_estimator=lin_vel_estimator,
+            l2c2_cfg=l2c2_cfg,
             device=device,
             **cfg["algorithm"],
             multi_gpu_cfg=cfg["multi_gpu"],

@@ -65,6 +65,16 @@ class RolloutStorage:
             self.hidden_states: tuple[HiddenState, HiddenState] = (None, None)
             """Hidden states for recurrent networks, e.g., (actor, critic)."""
 
+            # For L2C2 regularization
+            self.prev_actor_input: torch.Tensor | None = None
+            """Previous input to the actor network (L2C2 only)."""
+
+            self.prev_critic_input: torch.Tensor | None = None
+            """Previous input to the critic network (L2C2 only)."""
+
+            self.prev_input_valid: torch.Tensor | None = None
+            """Mask indicating valid previous inputs (L2C2 only)."""
+
         def clear(self) -> None:
             """Reset all transition fields to None."""
             self.__init__()
@@ -89,6 +99,9 @@ class RolloutStorage:
             masks: torch.Tensor | None = None,
             privileged_actions: torch.Tensor | None = None,
             dones: torch.Tensor | None = None,
+            prev_actor_input: torch.Tensor | None = None,
+            prev_critic_input: torch.Tensor | None = None,
+            prev_input_valid: torch.Tensor | None = None,
         ) -> None:
             """Initialize a batch container over rollout data."""
             self.observations: TensorDict | None = observations
@@ -127,6 +140,16 @@ class RolloutStorage:
             self.masks: torch.Tensor | None = masks
             """Batch of trajectory masks for recurrent networks (RL recurrent only)."""
 
+            # For L2C2 regularization
+            self.prev_actor_input: torch.Tensor | None = prev_actor_input
+            """Batch of previous actor inputs."""
+
+            self.prev_critic_input: torch.Tensor | None = prev_critic_input
+            """Batch of previous critic inputs."""
+
+            self.prev_input_valid: torch.Tensor | None = prev_input_valid
+            """Mask for valid previous actor/critic inputs."""
+
     def __init__(
         self,
         training_type: str,
@@ -134,6 +157,8 @@ class RolloutStorage:
         num_transitions_per_env: int,
         obs: TensorDict,
         actions_shape: tuple[int, ...] | list[int],
+        actor_input_dim: int | None = None,
+        critic_input_dim: int | None = None,
         device: str = "cpu",
     ) -> None:
         """Allocate rollout buffers for a specific training mode and batch shape."""
@@ -152,6 +177,20 @@ class RolloutStorage:
         self.rewards = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device)
         self.actions = torch.zeros(num_transitions_per_env, num_envs, *actions_shape, device=self.device)
         self.dones = torch.zeros(num_transitions_per_env, num_envs, 1, device=self.device).byte()
+
+        # For L2C2 regularization
+        if actor_input_dim is not None and critic_input_dim is not None:
+            self.prev_actor_input = torch.zeros(num_transitions_per_env, num_envs, actor_input_dim, device=self.device)
+            self.prev_critic_input = torch.zeros(
+                num_transitions_per_env, num_envs, critic_input_dim, device=self.device
+            )
+            self.prev_input_valid = torch.zeros(
+                num_transitions_per_env, num_envs, 1, device=self.device, dtype=torch.bool
+            )
+        else:
+            self.prev_actor_input = None
+            self.prev_critic_input = None
+            self.prev_input_valid = None
 
         # For distillation
         if training_type == "distillation":
@@ -183,6 +222,12 @@ class RolloutStorage:
         self.actions[self.step].copy_(transition.actions)  # type: ignore
         self.rewards[self.step].copy_(transition.rewards.view(-1, 1))
         self.dones[self.step].copy_(transition.dones.view(-1, 1))
+
+        # For L2C2 regularization
+        if transition.prev_actor_input is not None and transition.prev_critic_input is not None:
+            self.prev_actor_input[self.step].copy_(transition.prev_actor_input)
+            self.prev_critic_input[self.step].copy_(transition.prev_critic_input)
+            self.prev_input_valid[self.step].copy_(transition.prev_input_valid)  # type: ignore[arg-type]
 
         # For distillation
         if self.training_type == "distillation":
@@ -240,6 +285,9 @@ class RolloutStorage:
         old_actions_log_prob = self.actions_log_prob.flatten(0, 1)
         advantages = self.advantages.flatten(0, 1)
         old_distribution_params = tuple(p.flatten(0, 1) for p in self.distribution_params)  # type: ignore
+        prev_actor_input = self.prev_actor_input.flatten(0, 1)
+        prev_critic_input = self.prev_critic_input.flatten(0, 1)
+        prev_input_valid = self.prev_input_valid.flatten(0, 1) if self.prev_input_valid is not None else None
 
         for epoch in range(num_epochs):
             for i in range(num_mini_batches):
@@ -257,6 +305,9 @@ class RolloutStorage:
                     returns=returns[batch_idx],
                     old_actions_log_prob=old_actions_log_prob[batch_idx],
                     old_distribution_params=tuple(p[batch_idx] for p in old_distribution_params),
+                    prev_actor_input=prev_actor_input[batch_idx],
+                    prev_critic_input=prev_critic_input[batch_idx],
+                    prev_input_valid=prev_input_valid[batch_idx] if prev_input_valid is not None else None,
                 )
 
     # For reinforcement learning with recurrent networks
