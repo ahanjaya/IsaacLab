@@ -146,7 +146,6 @@ class GainTuner:
             print(f"[GainTuner] Failed to parse {self.gain_file}: {e}")
             return False
 
-        device = self.robot.device
         print(f"[GainTuner] Reloading gains from {self.gain_file}")
         for pattern, vals in gains.items():
             ids, names = self._resolve(pattern)
@@ -285,8 +284,8 @@ def _plot_joint_visualization(plot_queue) -> None:
 
     joint_data: dict[str, deque] = {}
     lines_pos: dict[str, any] = {}
-    lines_tau: dict[str, any] = {}
-    ax_tau: dict[str, any] = {}
+    # lines_tau: dict[str, any] = {}
+    # ax_tau: dict[str, any] = {}
 
     for i, joint_name in enumerate(joint_names):
         for side in ["left", "right"]:
@@ -341,7 +340,7 @@ def _plot_joint_visualization(plot_queue) -> None:
                 key = f"{side}_{jn.lower().replace(' ', '_')}"
                 tq = joint_data[f"{key}_target"]
                 cq = joint_data[f"{key}_current"]
-                taq = joint_data[f"{key}_torque"]
+                # taq = joint_data[f"{key}_torque"]
                 if tq:
                     n = len(tq)
                     x = range(total_steps - n, total_steps)
