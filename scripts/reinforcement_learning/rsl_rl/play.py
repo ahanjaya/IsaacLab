@@ -224,144 +224,83 @@ def _configure_subplot(subplot, title, ylim):
     subplot.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
 
 
-@hydra_task_config(args_cli.task, args_cli.agent)
-def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
-    """Play with RSL-RL agent."""
-    # grab task name for checkpoint path
-    task_name = args_cli.task.split(":")[-1]
-    train_task_name = task_name.replace("-Play", "")
-
-    # override configurations with non-hydra CLI arguments
-    agent_cfg: RslRlBaseRunnerCfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
-    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
-
-    # handle deprecated configurations
-    agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_version)
-
-    # set the environment seed
-    # note: certain randomizations occur in the environment initialization so we set the seed here
-    env_cfg.seed = agent_cfg.seed
-    env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
-
-    # specify directory for logging experiments
-    log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
-    log_root_path = os.path.abspath(log_root_path)
-    print(f"[INFO] Loading experiment from directory: {log_root_path}")
+def _resolve_resume_path(args_cli, agent_cfg, train_task_name: str, log_root_path: str) -> str | None:
+    """Resolve the checkpoint path to resume from based on CLI arguments."""
     if args_cli.use_pretrained_checkpoint:
         resume_path = get_published_pretrained_checkpoint("rsl_rl", train_task_name)
         if not resume_path:
             print("[INFO] Unfortunately a pre-trained checkpoint is currently unavailable for this task.")
-            return
+        return resume_path
     elif args_cli.checkpoint:
-        resume_path = retrieve_file_path(args_cli.checkpoint)
+        return retrieve_file_path(args_cli.checkpoint)
     else:
-        resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
+        return get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
-    log_dir = os.path.dirname(resume_path)
 
-    # set the log directory for the environment (works for all environment types)
-    env_cfg.log_dir = log_dir
+def _export_policy(runner, installed_version: str, resume_path: str):
+    """Export the trained policy to JIT and ONNX formats.
 
-    # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
-
-    # convert to single-agent instance if required by the RL algorithm
-    if isinstance(env.unwrapped, DirectMARLEnv):
-        env = multi_agent_to_single_agent(env)
-
-    # wrap for video recording
-    if args_cli.video:
-        video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "play"),
-            "step_trigger": lambda step: step == 0,
-            "video_length": args_cli.video_length,
-            "disable_logger": True,
-        }
-        print("[INFO] Recording videos during training.")
-        print_dict(video_kwargs, nesting=4)
-        env = gym.wrappers.RecordVideo(env, **video_kwargs)
-
-    # wrap around environment for rsl-rl
-    env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
-
-    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
-    # load previously trained model
-    if agent_cfg.class_name == "OnPolicyRunner":
-        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
-    elif agent_cfg.class_name == "DistillationRunner":
-        runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
-    else:
-        raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
-    # convert pre-5.0 published checkpoints to the layout expected by rsl-rl >= 5.0 (no-op otherwise)
-    resume_path = handle_deprecated_rsl_rl_checkpoint(resume_path, installed_version)
-    runner.load(resume_path)
-
-    # obtain the trained policy for inference
-    policy = runner.get_inference_policy(device=env.unwrapped.device)
-    lin_vel_estimator = runner.get_inference_lin_vel_estimator(device=env.unwrapped.device)
-
-    # export the trained policy to JIT and ONNX formats
+    Returns the export directory and, for legacy rsl-rl versions, the underlying policy network used later to
+    reset recurrent state. ``None`` is returned for the network on rsl-rl >= 4.0.0, since resets go through
+    ``policy`` directly in that case.
+    """
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
 
     if version.parse(installed_version) >= version.parse("4.0.0"):
         # use the new export functions for rsl-rl >= 4.0.0
         runner.export_policy_to_jit(path=export_model_dir, filename="policy.pt")
         runner.export_policy_to_onnx(path=export_model_dir, filename="policy.onnx")
+        return export_model_dir, None
+
+    # extract the neural network for rsl-rl < 4.0.0
+    if version.parse(installed_version) >= version.parse("2.3.0"):
+        policy_nn = runner.alg.policy
     else:
-        # extract the neural network for rsl-rl < 4.0.0
-        if version.parse(installed_version) >= version.parse("2.3.0"):
-            policy_nn = runner.alg.policy
-        else:
-            policy_nn = runner.alg.actor_critic
+        policy_nn = runner.alg.actor_critic
 
-        # extract the normalizer
-        if hasattr(policy_nn, "actor_obs_normalizer"):
-            normalizer = policy_nn.actor_obs_normalizer
-        elif hasattr(policy_nn, "student_obs_normalizer"):
-            normalizer = policy_nn.student_obs_normalizer
-        else:
-            normalizer = None
+    # extract the normalizer
+    if hasattr(policy_nn, "actor_obs_normalizer"):
+        normalizer = policy_nn.actor_obs_normalizer
+    elif hasattr(policy_nn, "student_obs_normalizer"):
+        normalizer = policy_nn.student_obs_normalizer
+    else:
+        normalizer = None
 
-        # export to JIT and ONNX
-        export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
-        export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+    # export to JIT and ONNX
+    export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
+    export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+    return export_model_dir, policy_nn
 
-    dt = env.unwrapped.step_dt
-    print(f"[INFO] Environment step dt: {dt:.4f} seconds.")
 
-    if args_cli.use_jit:
-        print("[INFO] Using JIT for policy inference.")
-        policy = torch.jit.load(os.path.join(export_model_dir, "policy.pt")).to(env.unwrapped.device)
+def _init_udp_socket(args_cli):
+    """Initialize a UDP socket for publishing actions, if enabled."""
+    if not args_cli.enable_udp:
+        return None
+    try:
+        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        print(f"[INFO] UDP socket initialized. Publishing to {args_cli.udp_host}:{args_cli.udp_port}")
+        return udp_socket
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize UDP socket: {e}")
+        return None
 
-    if args_cli.plot:
-        # Start the plotting function in a separate process
-        queue = mp.Queue()
-        mp_plot = mp.Process(target=_plot_joint_visualization, args=(queue,))
-        mp_plot.start()
 
-    # initialize UDP socket for publishing actions
-    udp_socket = None
-    if args_cli.enable_udp:
-        try:
-            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            print(f"[INFO] UDP socket initialized. Publishing to {args_cli.udp_host}:{args_cli.udp_port}")
-        except Exception as e:
-            print(f"[ERROR] Failed to initialize UDP socket: {e}")
-            udp_socket = None
-
-    # reset environment
-    obs = env.get_observations()
+def _run_play_loop(
+    env,
+    policy,
+    lin_vel_estimator,
+    policy_nn,
+    args_cli,
+    installed_version: str,
+    dt: float,
+    udp_socket,
+    plot_queue,
+    obs,
+    simulation_app,
+) -> None:
+    """Run the simulation loop, stepping the policy until the app closes or the video finishes recording."""
     timestep = 0
 
-    # Set up viewport camera to track the robot
-    if args_cli.follow_robot:
-        vcc = env.unwrapped.viewport_camera_controller
-        vcc.update_view_to_asset_root("robot")
-        # vcc.set_view_env_index(0)  # Track environment 0
-        # vcc.update_view_to_env()
-        vcc.update_view_location(eye=[2.0, 2.0, 0.5], lookat=[0.0, 0.0, 0.0])
-
-    # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
         # run everything in inference mode
@@ -411,14 +350,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             if args_cli.plot:
                 # Interleave actions and positions for all 20 joints
                 joint_data = tuple(value for i in range(20) for value in (actions_numpy[i], obs_pos_numpy[i]))
-                queue.put(joint_data)
+                plot_queue.put(joint_data)
 
         done_env_ids = dones.nonzero(as_tuple=False).flatten()
 
         if done_env_ids.shape[0] > 0:
             if args_cli.plot:
                 none_tuple = (None,) * 40
-                queue.put(none_tuple)
+                plot_queue.put(none_tuple)
 
         timestep += 1
 
@@ -433,10 +372,125 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             time.sleep(sleep_time)
 
         # print the frequency in this loop
-        end_time = time.time()
-        loop_dt = end_time - start_time
-        loop_freq = 1.0 / loop_dt if loop_dt > 0 else float("inf")
+        # end_time = time.time()
+        # loop_dt = end_time - start_time
+        # loop_freq = 1.0 / loop_dt if loop_dt > 0 else float("inf")
         # print(f"[INFO] Timestep: {timestep}, Loop Frequency: {loop_freq:.2f} Hz")
+
+
+@hydra_task_config(args_cli.task, args_cli.agent)
+def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
+    """Play with RSL-RL agent."""
+    # grab task name for checkpoint path
+    task_name = args_cli.task.split(":")[-1]
+    train_task_name = task_name.replace("-Play", "")
+
+    # override configurations with non-hydra CLI arguments
+    agent_cfg: RslRlBaseRunnerCfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
+    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+
+    # handle deprecated configurations
+    agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_version)
+
+    # set the environment seed
+    # note: certain randomizations occur in the environment initialization so we set the seed here
+    env_cfg.seed = agent_cfg.seed
+    env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
+
+    # specify directory for logging experiments
+    log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
+    log_root_path = os.path.abspath(log_root_path)
+    print(f"[INFO] Loading experiment from directory: {log_root_path}")
+    resume_path = _resolve_resume_path(args_cli, agent_cfg, train_task_name, log_root_path)
+    if not resume_path:
+        return
+
+    log_dir = os.path.dirname(resume_path)
+
+    # set the log directory for the environment (works for all environment types)
+    env_cfg.log_dir = log_dir
+
+    # create isaac environment
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+
+    # convert to single-agent instance if required by the RL algorithm
+    if isinstance(env.unwrapped, DirectMARLEnv):
+        env = multi_agent_to_single_agent(env)
+
+    # wrap for video recording
+    if args_cli.video:
+        video_kwargs = {
+            "video_folder": os.path.join(log_dir, "videos", "play"),
+            "step_trigger": lambda step: step == 0,
+            "video_length": args_cli.video_length,
+            "disable_logger": True,
+        }
+        print("[INFO] Recording videos during training.")
+        print_dict(video_kwargs, nesting=4)
+        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+
+    # wrap around environment for rsl-rl
+    env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
+
+    print(f"[INFO]: Loading model checkpoint from: {resume_path}")
+    # load previously trained model
+    if agent_cfg.class_name == "OnPolicyRunner":
+        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
+    elif agent_cfg.class_name == "DistillationRunner":
+        runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
+    else:
+        raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
+    runner.load(resume_path)
+
+    # obtain the trained policy for inference
+    policy = runner.get_inference_policy(device=env.unwrapped.device)
+    lin_vel_estimator = runner.get_inference_lin_vel_estimator(device=env.unwrapped.device)
+
+    # export the trained policy to JIT and ONNX formats
+    export_model_dir, policy_nn = _export_policy(runner, installed_version, resume_path)
+
+    dt = env.unwrapped.step_dt
+    print(f"[INFO] Environment step dt: {dt:.4f} seconds.")
+
+    if args_cli.use_jit:
+        print("[INFO] Using JIT for policy inference.")
+        policy = torch.jit.load(os.path.join(export_model_dir, "policy.pt")).to(env.unwrapped.device)
+
+    plot_queue = None
+    if args_cli.plot:
+        # Start the plotting function in a separate process
+        plot_queue = mp.Queue()
+        mp_plot = mp.Process(target=_plot_joint_visualization, args=(plot_queue,))
+        mp_plot.start()
+
+    # initialize UDP socket for publishing actions
+    udp_socket = _init_udp_socket(args_cli)
+
+    # reset environment
+    obs = env.get_observations()
+
+    # Set up viewport camera to track the robot
+    if args_cli.follow_robot:
+        vcc = env.unwrapped.viewport_camera_controller
+        vcc.update_view_to_asset_root("robot")
+        # vcc.set_view_env_index(0)  # Track environment 0
+        # vcc.update_view_to_env()
+        vcc.update_view_location(eye=[2.0, 2.0, 0.5], lookat=[0.0, 0.0, 0.0])
+
+    # simulate environment
+    _run_play_loop(
+        env,
+        policy,
+        lin_vel_estimator,
+        policy_nn,
+        args_cli,
+        installed_version,
+        dt,
+        udp_socket,
+        plot_queue,
+        obs,
+        simulation_app,
+    )
 
     # close UDP socket if initialized
     if udp_socket is not None:
