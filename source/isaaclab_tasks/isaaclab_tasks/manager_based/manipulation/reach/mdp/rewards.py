@@ -68,3 +68,15 @@ def orientation_command_error(env: ManagerBasedRLEnv, command_name: str, asset_c
     des_quat_w = quat_mul(asset.data.root_quat_w, des_quat_b)
     curr_quat_w = asset.data.body_quat_w[:, asset_cfg.body_ids[0]]  # type: ignore
     return quat_error_magnitude(curr_quat_w, des_quat_w)
+
+
+def smoothness_rate_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Penalize the rate of change of the actions using L2 squared kernel."""
+    # Penalize changes in actions
+
+    return torch.sum(
+        torch.square(
+            env.action_manager.action - (2 * env.action_manager.prev_action) + env.action_manager.prev_two_action
+        ),
+        dim=1,
+    )

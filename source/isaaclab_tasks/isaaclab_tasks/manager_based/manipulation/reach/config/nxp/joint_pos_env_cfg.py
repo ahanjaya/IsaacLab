@@ -95,6 +95,7 @@ class RewardsCfg:
 
     # action penalty
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
+    smoothness_rate = RewTerm(func=mdp.smoothness_rate_l2, weight=-0.001)
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,
         weight=-0.001,
@@ -144,9 +145,9 @@ class NXPReachEnvCfg(ReachEnvCfg):
         # override command generator body
         self.commands.ee_pose.body_name = "right_ee_link"
 
-        # tighten smoothness curriculum targets to reduce joint shaking
-        self.curriculum.action_rate.params["weight"] = -0.01
-        self.curriculum.joint_vel.params["weight"] = -0.005
+        # # tighten smoothness curriculum targets to reduce joint shaking
+        # self.curriculum.action_rate.params["weight"] = -0.01
+        # self.curriculum.joint_vel.params["weight"] = -0.005
 
 
 @configclass

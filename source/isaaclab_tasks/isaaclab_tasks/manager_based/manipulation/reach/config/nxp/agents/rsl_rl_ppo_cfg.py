@@ -11,7 +11,7 @@ from isaaclab_rl.rsl_rl import L2C2Cfg, RslRlOnPolicyRunnerCfg, RslRlPpoActorCri
 @configclass
 class NXPReachPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 1000
+    max_iterations = 5000
     save_interval = 500
     experiment_name = "nxp_reach"
     run_name = ""
