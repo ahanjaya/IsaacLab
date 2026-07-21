@@ -430,3 +430,20 @@ class LinVelEstimatorCfg:
 
     activation: str = MISSING
     """The activation function for the linear velocity estimator."""
+
+
+@configclass
+class L2C2Cfg:
+    """Configuration for the L2C2 module."""
+
+    sigma: float = MISSING
+    """The sigma parameter for the L2C2 module."""
+
+    lambda_under: float = MISSING
+    """The lower bound for the lambda parameter in the L2C2 module."""
+
+    lambda_upper: float = MISSING
+    """The upper bound for the lambda parameter in the L2C2 module."""
+
+    beta: float = MISSING
+    """The beta parameter for the L2C2 module."""
