@@ -273,13 +273,13 @@ NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         joint_pos={
-            # "left_shoulder_pitch_joint": 0.0,
+            "left_shoulder_pitch_joint": 0.0,
             "right_shoulder_pitch_joint": 0.0,
-            # "left_shoulder_roll_joint": 0.0,
+            "left_shoulder_roll_joint": -0.0436,
             "right_shoulder_roll_joint": 0.0436,
-            # "left_shoulder_yaw_joint": 0.0,
+            "left_shoulder_yaw_joint": -0.1309,
             "right_shoulder_yaw_joint": 0.1309,
-            # "left_elbow_joint": 0.0,
+            "left_elbow_joint": 0.1745,
             "right_elbow_joint": -0.1745,
             # "head_pan_joint": 0.0,
             # "head_tilt_joint": 0.0,
@@ -306,55 +306,105 @@ NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
         #     min_delay=0,
         #     max_delay=3,
         # ),
-        "arm": PaceDCMotorCfg(
-            joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
+        "left_arm": PaceDCMotorCfg(
+            joint_names_expr=["left_shoulder_.*", "left_elbow_.*"],
             saturation_effort=17.0,
             effort_limit=17.0,
             velocity_limit=37.68,
             stiffness={
-                ".*_shoulder_pitch_.*": 261.182526,
-                ".*_shoulder_roll_.*": 499.980774,
-                ".*_shoulder_yaw_.*": 499.992981,
-                ".*_elbow_.*": 499.990448,
+                ".*_shoulder_pitch_.*": 197.056122,
+                ".*_shoulder_roll_.*": 490.979828,
+                ".*_shoulder_yaw_.*": 499.144501,
+                ".*_elbow_.*": 497.635437,
             },  # P gain in Nm/rad
             damping={
-                ".*_shoulder_pitch_.*": 1.164000,
-                ".*_shoulder_roll_.*": 3.923899,
-                ".*_shoulder_yaw_.*": 1.682629,
-                ".*_elbow_.*": 2.220517,
+                ".*_shoulder_pitch_.*": 0.742269,
+                ".*_shoulder_roll_.*": 4.030707,
+                ".*_shoulder_yaw_.*": 1.776445,
+                ".*_elbow_.*": 3.101271,
             },  # D gain in Nm s/rad
             # --- Identified parameters ---
             encoder_bias={
-                ".*_shoulder_pitch_.*": -0.099977,
-                ".*_shoulder_roll_.*": -0.099993,
-                ".*_shoulder_yaw_.*": -0.002818,
-                ".*_elbow_.*": -0.099986,
+                ".*_shoulder_pitch_.*": 0.097939,
+                ".*_shoulder_roll_.*": 0.099312,
+                ".*_shoulder_yaw_.*": -0.042336,
+                ".*_elbow_.*": 0.099604,
             },  # encoder bias in radians
             armature={
-                ".*_shoulder_pitch_.*": 0.013834,
-                ".*_shoulder_roll_.*": 0.031562,
-                ".*_shoulder_yaw_.*": 0.000337,
-                ".*_elbow_.*": 0.075580,
+                ".*_shoulder_pitch_.*": 0.015928,
+                ".*_shoulder_roll_.*": 0.035970,
+                ".*_shoulder_yaw_.*": 0.000436,
+                ".*_elbow_.*": 0.075686,
             },  # rotor inertia (kg m^2)
             friction={
-                ".*_shoulder_pitch_.*": 0.499951,
-                ".*_shoulder_roll_.*": 0.101055,
-                ".*_shoulder_yaw_.*": 0.499936,
-                ".*_elbow_.*": 0.499894,
+                ".*_shoulder_pitch_.*": 0.223557,
+                ".*_shoulder_roll_.*": 0.017051,
+                ".*_shoulder_yaw_.*": 0.493055,
+                ".*_elbow_.*": 0.489961,
             },  # static (Coulomb) friction coefficient (Nm)
             dynamic_friction={
-                ".*_shoulder_pitch_.*": 0.499951,
-                ".*_shoulder_roll_.*": 0.101055,
-                ".*_shoulder_yaw_.*": 0.499936,
-                ".*_elbow_.*": 0.499894,
+                ".*_shoulder_pitch_.*": 0.223557,
+                ".*_shoulder_roll_.*": 0.017051,
+                ".*_shoulder_yaw_.*": 0.493055,
+                ".*_elbow_.*": 0.489961,
             },  # dynamic friction coefficient (Nm); equal to static for Coulomb model
             viscous_friction={
-                ".*_shoulder_pitch_.*": 1.253000,
-                ".*_shoulder_roll_.*": 0.279301,
-                ".*_shoulder_yaw_.*": 3.245217,
-                ".*_elbow_.*": 1.600798,
+                ".*_shoulder_pitch_.*": 1.070898,
+                ".*_shoulder_roll_.*": 0.092758,
+                ".*_shoulder_yaw_.*": 2.680460,
+                ".*_elbow_.*": 0.516676,
             },  # viscous friction coefficient (Nm s/rad)
-            max_delay=0,  # identified delay: round(0.5101752281188965 steps) = 0 sim steps
+            max_delay=0,  #
+        ),
+        "right_arm": PaceDCMotorCfg(
+            joint_names_expr=["right_shoulder_.*", "right_elbow_.*"],
+            saturation_effort=17.0,
+            effort_limit=17.0,
+            velocity_limit=37.68,
+            stiffness={
+                ".*_shoulder_pitch_joint": 241.678772,
+                ".*_shoulder_roll_joint": 492.960785,
+                ".*_shoulder_yaw_joint": 498.990387,
+                ".*_elbow_joint": 499.138458,
+            },  # P gain in Nm/rad
+            damping={
+                ".*_shoulder_pitch_joint": 0.166352,
+                ".*_shoulder_roll_joint": 4.097325,
+                ".*_shoulder_yaw_joint": 1.964294,
+                ".*_elbow_joint": 2.457608,
+            },  # D gain in Nm s/rad
+            # --- Identified parameters ---
+            encoder_bias={
+                ".*_shoulder_pitch_joint": -0.094001,
+                ".*_shoulder_roll_joint": -0.099424,
+                ".*_shoulder_yaw_joint": 0.049218,
+                ".*_elbow_joint": -0.099565,
+            },  # encoder bias in radians
+            armature={
+                ".*_shoulder_pitch_joint": 0.015554,
+                ".*_shoulder_roll_joint": 0.042742,
+                ".*_shoulder_yaw_joint": 0.010356,
+                ".*_elbow_joint": 0.051234,
+            },  # rotor inertia (kg m^2)
+            friction={
+                ".*_shoulder_pitch_joint": 0.493800,
+                ".*_shoulder_roll_joint": 0.019700,
+                ".*_shoulder_yaw_joint": 0.496976,
+                ".*_elbow_joint": 0.492035,
+            },  # static (Coulomb) friction coefficient (Nm)
+            dynamic_friction={
+                ".*_shoulder_pitch_joint": 0.493800,
+                ".*_shoulder_roll_joint": 0.019700,
+                ".*_shoulder_yaw_joint": 0.496976,
+                ".*_elbow_joint": 0.492035,
+            },  # dynamic friction coefficient (Nm); equal to static for Coulomb model
+            viscous_friction={
+                ".*_shoulder_pitch_joint": 2.015668,
+                ".*_shoulder_roll_joint": 0.126374,
+                ".*_shoulder_yaw_joint": 2.831339,
+                ".*_elbow_joint": 1.337506,
+            },  # viscous friction coefficient (Nm s/rad)
+            max_delay=0,  # identified delay: round(0.49767881631851196 steps) = 0 sim steps
         ),
         "head": DelayedPDActuatorCfg(
             joint_names_expr=["head_.*"],
