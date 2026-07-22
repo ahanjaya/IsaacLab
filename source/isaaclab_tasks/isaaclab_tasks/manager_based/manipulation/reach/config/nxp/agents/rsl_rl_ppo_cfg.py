@@ -18,9 +18,9 @@ class NXPReachPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     resume = False
     empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
-        init_noise_std=1.0,
-        actor_hidden_dims=[64, 64],
-        critic_hidden_dims=[64, 64],
+        init_noise_std=1.5,
+        actor_hidden_dims=[128, 128, 128],
+        critic_hidden_dims=[128, 128, 128],
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(
