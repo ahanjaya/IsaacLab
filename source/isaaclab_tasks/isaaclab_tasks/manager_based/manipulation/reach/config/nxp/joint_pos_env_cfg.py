@@ -232,7 +232,7 @@ class NXPReachEnvCfg(ReachEnvCfg):
         self.scene.robot = NXP_V1_UPPER_BODY_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
         # override events
-        self.events.reset_robot_joints.params["position_range"] = (0.8, 1.2)
+        self.events.reset_robot_joints.params["position_range"] = (0.75, 1.25)
 
 
 @configclass
