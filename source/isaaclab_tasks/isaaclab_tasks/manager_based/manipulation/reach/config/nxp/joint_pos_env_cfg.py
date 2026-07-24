@@ -44,31 +44,26 @@ NXP_RIGHT_ARM_JOINT_NAMES = [
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    left_arm_action = mdp.JointPositionActionCfg(
+    # NOTE: incremental (relative) joint position control is used instead of absolute position control.
+    # The identified DCMotorCfg actuator (see NXP_V1_UPPER_BODY_CFG) has very high stiffness (~220-500 Nm/rad)
+    # relative to its torque budget (effort_limit/saturation_effort = 17 Nm), so any absolute position command
+    # more than a few degrees away from the current joint position saturates the actuator. Commanding small,
+    # incremental deltas from the current joint position keeps the tracked error inside (or close to) the
+    # actuator's rated torque-speed region, avoiding the large-jump-induced saturation that otherwise amplifies
+    # the (real, identified) left/right actuator differences into asymmetric tracking/joint-usage behavior.
+    left_arm_action = mdp.RelativeJointPositionActionCfg(
         asset_name="robot",
         joint_names=NXP_LEFT_ARM_JOINT_NAMES,
-        scale=0.5,
+        scale=0.05,
         preserve_order=True,
-        use_default_offset=True,
-        clip={
-            "left_shoulder_pitch_joint": (-1.570796, 1.570796),
-            "left_shoulder_roll_joint": (-3.141592, 0.087266),
-            "left_shoulder_yaw_joint": (-1.570796, 1.570796),
-            "left_elbow_joint": (-0.087266, 1.570796),
-        },
+        use_zero_offset=True,
     )
-    right_arm_action = mdp.JointPositionActionCfg(
+    right_arm_action = mdp.RelativeJointPositionActionCfg(
         asset_name="robot",
         joint_names=NXP_RIGHT_ARM_JOINT_NAMES,
-        scale=0.5,
+        scale=0.05,
         preserve_order=True,
-        use_default_offset=True,
-        clip={
-            "right_shoulder_pitch_joint": (-1.570796, 1.570796),
-            "right_shoulder_roll_joint": (-0.087266, 3.141592),
-            "right_shoulder_yaw_joint": (-1.570796, 1.570796),
-            "right_elbow_joint": (-1.570796, 0.087266),
-        },
+        use_zero_offset=True,
     )
 
 
