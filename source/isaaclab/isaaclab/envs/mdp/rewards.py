@@ -259,6 +259,18 @@ def action_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.sum(torch.square(env.action_manager.action), dim=1)
 
 
+def smoothness_rate_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Penalize the rate of change of the actions using L2 squared kernel."""
+    # Penalize changes in actions
+
+    return torch.sum(
+        torch.square(
+            env.action_manager.action - (2 * env.action_manager.prev_action) + env.action_manager.prev_two_action
+        ),
+        dim=1,
+    )
+
+
 """
 Contact sensor.
 """

@@ -124,6 +124,8 @@ class NXPRewards(RewardsCfg):
         params={"asset_cfg": SceneEntity("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*"])},
     )
 
+    smoothness_rate = RewTerm(func=mdp.smoothness_rate_l2, weight=-0.001)
+
 
 @configclass
 class NXPObervations:
