@@ -268,15 +268,19 @@ def _run_play_loop(
         start_time = time.time()
         # run everything in inference mode
         with torch.inference_mode():
-            # inject estimated linear velocity if estimator is available
-            if lin_vel_estimator is not None:
-                obs["estimated_lin_vel"] = lin_vel_estimator(obs["proprioceptive"])
             # agent stepping
-            # JIT-exported _TorchMLPModel.forward(x: Tensor) expects pre-concatenated obs, not TensorDict
             if args_cli.use_jit:
-                actor_obs = torch.cat([obs[group] for group in actor_obs_groups], dim=-1)
-                actions = policy(actor_obs)
+                if lin_vel_estimator is not None:
+                    # lin_vel_estimator is embedded in the exported model, so it takes raw proprioceptive obs
+                    actions = policy(obs["proprioceptive"])
+                elif len(actor_obs_groups) == 1:
+                    actions = policy(obs[actor_obs_groups[0]])
+                else:
+                    actor_obs = torch.cat([obs[group] for group in actor_obs_groups], dim=-1)
+                    actions = policy(actor_obs)
             else:
+                if lin_vel_estimator is not None:
+                    obs["estimated_lin_vel"] = lin_vel_estimator(obs["proprioceptive"])
                 actions = policy(obs)
 
             # env stepping
@@ -406,7 +410,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # obtain the trained policy for inference
     policy = runner.get_inference_policy(device=env.unwrapped.device)
     lin_vel_estimator = runner.get_inference_lin_vel_estimator(device=env.unwrapped.device)
-    # actor observation groups, in the order the JIT-exported model expects them pre-concatenated
+    # actor observation groups, used to build the JIT model's input when no lin_vel_estimator is embedded
     actor_obs_groups = policy.obs_groups
 
     # export the trained policy to JIT and ONNX formats

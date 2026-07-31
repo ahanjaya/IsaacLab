@@ -178,8 +178,12 @@ class OnPolicyRunner:
         return self.linvel_estimator.to(device)
 
     def export_policy_to_jit(self, path: str, filename: str = "policy.pt") -> None:
-        """Export the model to a Torch JIT file."""
-        jit_model = self.alg.get_policy().as_jit()
+        """Export the model to a Torch JIT file.
+
+        If a linear velocity estimator is used, it is embedded in the exported model so inference only requires
+        the raw ``"proprioceptive"`` observation (simpler for downstream, e.g. C++, inference).
+        """
+        jit_model = self.alg.get_policy().as_jit(lin_vel_estimator=self.linvel_estimator)
         jit_model.to("cpu")
 
         if not os.path.exists(path):

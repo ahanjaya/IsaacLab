@@ -165,9 +165,15 @@ class MLPModel(nn.Module):
         """Compute KL divergence between two parameterizations of the distribution."""
         return self.distribution.kl_divergence(old_params, new_params)
 
-    def as_jit(self) -> nn.Module:
-        """Return a version of the model compatible with Torch JIT export."""
-        return _TorchMLPModel(self)
+    def as_jit(self, lin_vel_estimator: nn.Module | None = None) -> nn.Module:
+        """Return a version of the model compatible with Torch JIT export.
+
+        Args:
+            lin_vel_estimator: If provided and this model consumes an ``"estimated_lin_vel"`` observation group,
+                the estimator is embedded in the exported model so it can be run on raw ``"proprioceptive"``
+                observations directly (useful for downstream C++ inference).
+        """
+        return _TorchMLPModel(self, lin_vel_estimator)
 
     def as_onnx(self, verbose: bool) -> nn.Module:
         """Return a version of the model compatible with ONNX export."""
@@ -202,8 +208,13 @@ class MLPModel(nn.Module):
 class _TorchMLPModel(nn.Module):
     """Exportable MLP model for JIT."""
 
-    def __init__(self, model: MLPModel) -> None:
-        """Create a TorchScript-friendly copy of an MLPModel."""
+    def __init__(self, model: MLPModel, lin_vel_estimator: nn.Module | None = None) -> None:
+        """Create a TorchScript-friendly copy of an MLPModel.
+
+        Args:
+            model: The model to export.
+            lin_vel_estimator: Optional estimator to embed, see :meth:`MLPModel.as_jit`.
+        """
         super().__init__()
         self.obs_normalizer = copy.deepcopy(model.obs_normalizer)
         self.mlp = copy.deepcopy(model.mlp)
@@ -212,8 +223,33 @@ class _TorchMLPModel(nn.Module):
         else:
             self.deterministic_output = nn.Identity()
 
+        self.has_lin_vel_estimator = lin_vel_estimator is not None
+        if self.has_lin_vel_estimator:
+            if sorted(model.obs_groups) != sorted(["estimated_lin_vel", "proprioceptive"]):
+                raise ValueError(
+                    "Embedding a lin_vel_estimator in the JIT export requires the model's obs_groups to be exactly"
+                    f" ['estimated_lin_vel', 'proprioceptive'], got {model.obs_groups}."
+                )
+            self.lin_vel_estimator = copy.deepcopy(lin_vel_estimator)
+            self.lin_vel_first = model.obs_groups[0] == "estimated_lin_vel"
+        else:
+            # placeholder submodule so TorchScript always sees a concrete module
+            self.lin_vel_estimator = nn.Identity()
+            self.lin_vel_first = True
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run deterministic inference on pre-concatenated observations."""
+        """Run deterministic inference. ``x`` is the raw proprioceptive observation.
+
+        If a lin_vel_estimator was embedded at export time, ``x`` should be the raw ``"proprioceptive"``
+        observation and the estimated linear velocity is computed and concatenated internally. Otherwise, ``x``
+        must be the pre-concatenated observations expected by the model.
+        """
+        if self.has_lin_vel_estimator:
+            estimated_lin_vel = self.lin_vel_estimator(x)
+            if self.lin_vel_first:
+                x = torch.cat([estimated_lin_vel, x], dim=-1)
+            else:
+                x = torch.cat([x, estimated_lin_vel], dim=-1)
         x = self.obs_normalizer(x)
         out = self.mlp(x)
         return self.deterministic_output(out)
