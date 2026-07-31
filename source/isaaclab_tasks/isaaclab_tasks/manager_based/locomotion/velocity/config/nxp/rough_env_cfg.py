@@ -53,12 +53,12 @@ NXP_JOINT_NAMES = [
 class NXPActions(ActionsCfg):
     """Action specifications for the MDP."""
 
-    joint_pos = mdp.JointPositionActionCfg(
+    joint_pos = mdp.RelativeJointPositionActionCfg(
         asset_name="robot",
         joint_names=NXP_JOINT_NAMES,
-        scale=0.5,
+        scale=0.05,
         preserve_order=True,
-        use_default_offset=True,
+        use_zero_offset=True,
     )
 
 
