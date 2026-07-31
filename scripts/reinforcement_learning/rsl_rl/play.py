@@ -61,8 +61,6 @@ simulation_app = app_launcher.app
 
 import importlib.metadata as metadata
 
-from packaging import version
-
 installed_version = metadata.version("rsl-rl-lib")
 
 """Rest everything follows."""
@@ -90,14 +88,7 @@ from isaaclab.envs import (
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
 
-from isaaclab_rl.rsl_rl import (
-    RslRlBaseRunnerCfg,
-    RslRlVecEnvWrapper,
-    export_policy_as_jit,
-    export_policy_as_onnx,
-    handle_deprecated_rsl_rl_cfg,
-    handle_deprecated_rsl_rl_checkpoint,
-)
+from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper, handle_deprecated_rsl_rl_cfg
 from isaaclab_rl.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
 
 import isaaclab_tasks  # noqa: F401
@@ -237,39 +228,12 @@ def _resolve_resume_path(args_cli, agent_cfg, train_task_name: str, log_root_pat
         return get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
 
-def _export_policy(runner, installed_version: str, resume_path: str):
-    """Export the trained policy to JIT and ONNX formats.
-
-    Returns the export directory and, for legacy rsl-rl versions, the underlying policy network used later to
-    reset recurrent state. ``None`` is returned for the network on rsl-rl >= 4.0.0, since resets go through
-    ``policy`` directly in that case.
-    """
+def _export_policy(runner, resume_path: str) -> str:
+    """Export the trained policy to JIT and ONNX formats. Requires rsl-rl >= 4.0.0."""
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-
-    if version.parse(installed_version) >= version.parse("4.0.0"):
-        # use the new export functions for rsl-rl >= 4.0.0
-        runner.export_policy_to_jit(path=export_model_dir, filename="policy.pt")
-        runner.export_policy_to_onnx(path=export_model_dir, filename="policy.onnx")
-        return export_model_dir, None
-
-    # extract the neural network for rsl-rl < 4.0.0
-    if version.parse(installed_version) >= version.parse("2.3.0"):
-        policy_nn = runner.alg.policy
-    else:
-        policy_nn = runner.alg.actor_critic
-
-    # extract the normalizer
-    if hasattr(policy_nn, "actor_obs_normalizer"):
-        normalizer = policy_nn.actor_obs_normalizer
-    elif hasattr(policy_nn, "student_obs_normalizer"):
-        normalizer = policy_nn.student_obs_normalizer
-    else:
-        normalizer = None
-
-    # export to JIT and ONNX
-    export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
-    export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
-    return export_model_dir, policy_nn
+    runner.export_policy_to_jit(path=export_model_dir, filename="policy.pt")
+    runner.export_policy_to_onnx(path=export_model_dir, filename="policy.onnx")
+    return export_model_dir
 
 
 def _init_udp_socket(args_cli):
@@ -289,14 +253,13 @@ def _run_play_loop(
     env,
     policy,
     lin_vel_estimator,
-    policy_nn,
     args_cli,
-    installed_version: str,
     dt: float,
     udp_socket,
     plot_queue,
     obs,
     simulation_app,
+    actor_obs_groups=None,
 ) -> None:
     """Run the simulation loop, stepping the policy until the app closes or the video finishes recording."""
     timestep = 0
@@ -311,7 +274,8 @@ def _run_play_loop(
             # agent stepping
             # JIT-exported _TorchMLPModel.forward(x: Tensor) expects pre-concatenated obs, not TensorDict
             if args_cli.use_jit:
-                actions = policy(obs["policy"])
+                actor_obs = torch.cat([obs[group] for group in actor_obs_groups], dim=-1)
+                actions = policy(actor_obs)
             else:
                 actions = policy(obs)
 
@@ -339,13 +303,10 @@ def _run_play_loop(
                     print(f"[WARNING] Failed to send UDP data: {e}")
 
             # reset recurrent states for episodes that have terminated
-            if version.parse(installed_version) >= version.parse("4.0.0"):
-                if args_cli.use_jit:
-                    policy.reset()
-                else:
-                    policy.reset(dones)
+            if args_cli.use_jit:
+                policy.reset()
             else:
-                policy_nn.reset(dones)
+                policy.reset(dones)
 
             if args_cli.plot:
                 # Interleave actions and positions for all 20 joints
@@ -445,9 +406,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # obtain the trained policy for inference
     policy = runner.get_inference_policy(device=env.unwrapped.device)
     lin_vel_estimator = runner.get_inference_lin_vel_estimator(device=env.unwrapped.device)
+    # actor observation groups, in the order the JIT-exported model expects them pre-concatenated
+    actor_obs_groups = policy.obs_groups
 
     # export the trained policy to JIT and ONNX formats
-    export_model_dir, policy_nn = _export_policy(runner, installed_version, resume_path)
+    export_model_dir = _export_policy(runner, resume_path)
 
     dt = env.unwrapped.step_dt
     print(f"[INFO] Environment step dt: {dt:.4f} seconds.")
@@ -482,14 +445,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env,
         policy,
         lin_vel_estimator,
-        policy_nn,
         args_cli,
-        installed_version,
         dt,
         udp_socket,
         plot_queue,
         obs,
         simulation_app,
+        actor_obs_groups,
     )
 
     # close UDP socket if initialized
