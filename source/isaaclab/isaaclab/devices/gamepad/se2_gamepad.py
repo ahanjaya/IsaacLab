@@ -66,6 +66,7 @@ class Se2Gamepad(DeviceBase):
         self.v_y_sensitivity = cfg.v_y_sensitivity
         self.omega_z_sensitivity = cfg.omega_z_sensitivity
         self.dead_zone = cfg.dead_zone
+        self.swap_stick_dpad = cfg.swap_stick_dpad
         self._sim_device = cfg.sim_device
         # acquire omniverse interfaces
         self._appwindow = omni.appwindow.get_default_app_window()
@@ -163,15 +164,28 @@ class Se2Gamepad(DeviceBase):
 
     def _create_key_bindings(self):
         """Creates default key binding."""
+        # some controllers (e.g. certain Xbox pads on Linux) report the D-pad and left stick swapped
+        if self.swap_stick_dpad:
+            translate_up, translate_down = carb.input.GamepadInput.DPAD_UP, carb.input.GamepadInput.DPAD_DOWN
+            translate_right, translate_left = carb.input.GamepadInput.DPAD_RIGHT, carb.input.GamepadInput.DPAD_LEFT
+        else:
+            translate_up, translate_down = (
+                carb.input.GamepadInput.LEFT_STICK_UP,
+                carb.input.GamepadInput.LEFT_STICK_DOWN,
+            )
+            translate_right, translate_left = (
+                carb.input.GamepadInput.LEFT_STICK_RIGHT,
+                carb.input.GamepadInput.LEFT_STICK_LEFT,
+            )
         self._INPUT_STICK_VALUE_MAPPING = {
             # forward command
-            carb.input.GamepadInput.LEFT_STICK_UP: (0, 0, self.v_x_sensitivity),
+            translate_up: (0, 0, self.v_x_sensitivity),
             # backward command
-            carb.input.GamepadInput.LEFT_STICK_DOWN: (1, 0, self.v_x_sensitivity),
+            translate_down: (1, 0, self.v_x_sensitivity),
             # right command
-            carb.input.GamepadInput.LEFT_STICK_RIGHT: (0, 1, self.v_y_sensitivity),
+            translate_right: (0, 1, self.v_y_sensitivity),
             # left command
-            carb.input.GamepadInput.LEFT_STICK_LEFT: (1, 1, self.v_y_sensitivity),
+            translate_left: (1, 1, self.v_y_sensitivity),
             # yaw command (positive)
             carb.input.GamepadInput.RIGHT_STICK_RIGHT: (0, 2, self.omega_z_sensitivity),
             # yaw command (negative)
@@ -212,4 +226,6 @@ class Se2GamepadCfg(DeviceCfg):
     v_y_sensitivity: float = 1.0
     omega_z_sensitivity: float = 1.0
     dead_zone: float = 0.01
+    swap_stick_dpad: bool = False
+    """Set True if the controller reports the D-pad and left stick swapped. Defaults to False."""
     class_type: type[DeviceBase] = Se2Gamepad

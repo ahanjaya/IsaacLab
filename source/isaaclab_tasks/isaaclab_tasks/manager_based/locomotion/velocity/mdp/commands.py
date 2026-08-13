@@ -52,6 +52,7 @@ class Se2GamepadVelocityCommand(UniformVelocityCommand):
             v_y_sensitivity=self.cfg.gamepad_sensitivity[1],
             omega_z_sensitivity=self.cfg.gamepad_sensitivity[2],
             dead_zone=self.cfg.dead_zone,
+            swap_stick_dpad=self.cfg.swap_stick_dpad,
             sim_device=self.device,
         )
 
@@ -185,6 +186,9 @@ class Se2GamepadVelocityCommandCfg(UniformVelocityCommandCfg):
 
     dead_zone: float = 0.01
     """Dead zone for gamepad input to avoid drift. Defaults to 0.01."""
+
+    swap_stick_dpad: bool = False
+    """Set True if the controller reports the D-pad and left stick swapped. Defaults to False."""
 
     invert_axes: tuple[bool, bool, bool] = (False, True, True)
     """Whether to invert x, y, z axes from gamepad input. Defaults to (False, True, True)."""

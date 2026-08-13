@@ -102,6 +102,7 @@ class NXPFlatEnvCfg_PLAY(NXPFlatEnvCfg):
             debug_vis=True,
             gamepad_sensitivity=(0.5, 0.5, 0.5),  # Sensitivity for vx, vy, omega_z
             dead_zone=0.01,
+            swap_stick_dpad=False,  # this Xbox controller reports D-pad and left stick swapped
             invert_axes=(
                 False,
                 True,
