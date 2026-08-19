@@ -124,6 +124,15 @@ class NXPRewards(RewardsCfg):
         params={"asset_cfg": SceneEntity("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*"])},
     )
 
+    # Upright posture: L1 keeps a gradient near zero tilt, so the policy cannot lean to accelerate
+    base_orientation_l1 = RewTerm(func=mdp.base_orientation_l1, weight=-2.0)
+    base_pitch_l1 = RewTerm(func=mdp.base_pitch_l1, weight=-2.0)
+    base_height_l2 = RewTerm(
+        func=mdp.base_height_l2,
+        weight=-10.0,
+        params={"target_height": 0.85},
+    )
+
     smoothness_rate = RewTerm(func=mdp.smoothness_rate_l2, weight=-0.001)
 
 
@@ -363,7 +372,8 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.track_lin_vel_xy_exp.weight = 1.0
         self.rewards.track_ang_vel_z_exp.weight = 0.5
         self.rewards.lin_vel_z_l2.weight = -2.0
-        self.rewards.ang_vel_xy_l2.weight = -0.05
+        # damps the pitch/roll transient when the gait starts
+        self.rewards.ang_vel_xy_l2.weight = -0.2
         self.rewards.dof_pos_limits.weight = -1.0
         self.rewards.dof_acc_l2 = None
         self.rewards.dof_torques_l2.weight = -2.5e-5
@@ -380,6 +390,8 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_deviation_knee.weight = -0.01
         self.rewards.joint_deviation_arms.weight = -0.1
         self.rewards.flat_orientation_l2.weight = -5.0
+        # base height is measured against the terrain on rough ground
+        self.rewards.base_height_l2.params["sensor_cfg"] = SceneEntity("height_scanner")
 
         # Commands
         self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 1.0)
