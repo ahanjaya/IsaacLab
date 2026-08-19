@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from isaaclab.assets import RigidObject
 from isaaclab.envs import mdp
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
@@ -22,6 +23,22 @@ from isaaclab.utils.math import quat_apply_inverse, yaw_quat
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+def base_orientation_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize non-flat base orientation using an L1 kernel on the projected gravity xy-components.
+
+    Unlike the L2 variant, the gradient does not vanish for small tilts, so it also suppresses the
+    small persistent lean the policy would otherwise use to accelerate.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.sum(torch.abs(asset.data.projected_gravity_b[:, :2]), dim=1)
+
+
+def base_pitch_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize forward/backward lean of the base using an L1 kernel."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.abs(asset.data.projected_gravity_b[:, 0])
 
 
 def feet_air_time(
