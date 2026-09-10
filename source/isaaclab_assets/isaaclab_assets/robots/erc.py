@@ -372,3 +372,105 @@ NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
         ),
     },
 )
+
+NXP_TEEN_UPPER_BODY_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=os.path.join(
+            os.getcwd(),
+            NXP_DIR,
+            "nxp_teen_upper_body/nxp_teen_upper_body.usd",
+        ),
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            # disable_gravity=False,
+            # retain_accelerations=False,
+            # linear_damping=0.0,
+            # angular_damping=0.0,
+            # max_linear_velocity=1000.0,
+            # max_angular_velocity=1000.0,
+            # max_depenetration_velocity=1.0,
+            max_depenetration_velocity=5.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            enabled_self_collisions=True,
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=8,
+            fix_root_link=True,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        joint_pos={
+            "left_shoulder_pitch_joint": 0.0,
+            # "right_shoulder_pitch_joint": 0.0,
+            "left_shoulder_roll_joint": -1.5,
+            # "right_shoulder_roll_joint": 1.5,
+            "left_shoulder_yaw_joint": 0.8,
+            # "right_shoulder_yaw_joint": -0.8,
+            "left_elbow_joint": 0.75,
+            # "right_elbow_joint": -0.75,
+        },
+    ),
+    soft_joint_pos_limit_factor=0.9,
+    actuators={
+        "rs00": DCMotorCfg(
+            joint_names_expr=[".*_shoulder_pitch_.*"],
+            saturation_effort=14.0,
+            effort_limit=14.0,
+            velocity_limit=33.0,
+            stiffness={
+                "left_shoulder_pitch_joint": 144.5161,
+            },  # P gain in Nm/rad
+            damping={
+                "left_shoulder_pitch_joint": 1.3434,
+            },  # D gain in Nm s/rad
+            armature={
+                "left_shoulder_pitch_joint": 0.0101,
+            },  # rotor inertia (kg m^2)
+            friction={
+                "left_shoulder_pitch_joint": 0.2050,
+            },  # static (Coulomb) friction coefficient (Nm)
+            dynamic_friction={
+                "left_shoulder_pitch_joint": 0.2050,
+            },  # dynamic friction coefficient (Nm); equal to static for Coulomb model
+            viscous_friction={
+                "left_shoulder_pitch_joint": 0.0180,
+            },  # viscous friction coefficient (Nm s/rad)
+        ),
+        "rs05": DCMotorCfg(
+            joint_names_expr=[".*_shoulder_roll_.*", ".*_shoulder_yaw_.*", ".*_elbow_.*"],
+            saturation_effort=5.5*2.0,
+            effort_limit=5.5*2.0,
+            velocity_limit=50.0,
+            stiffness={
+                "left_shoulder_roll_joint": 326.7729,
+                "left_shoulder_yaw_joint": 496.9849,
+                "left_elbow_joint": 306.8630,
+            },  # P gain in Nm/rad
+            damping={
+                "left_shoulder_roll_joint": 2.8150,
+                "left_shoulder_yaw_joint": 3.0560,
+                "left_elbow_joint": 0.2487,
+            },  # D gain in Nm s/rad
+            armature={
+                "left_shoulder_roll_joint": 0.0056,
+                "left_shoulder_yaw_joint": 0.0063,
+                "left_elbow_joint": 0.0400,
+            },  # rotor inertia (kg m^2)
+            friction={
+                "left_shoulder_roll_joint": 0.0096,
+                "left_shoulder_yaw_joint": 0.4978,
+                "left_elbow_joint": 0.4852,
+            },  # static (Coulomb) friction coefficient (Nm)
+            dynamic_friction={
+                "left_shoulder_roll_joint": 0.0096,
+                "left_shoulder_yaw_joint": 0.4978,
+                "left_elbow_joint": 0.4852,
+            },  # dynamic friction coefficient (Nm); equal to static for Coulomb model
+            viscous_friction={
+                "left_shoulder_roll_joint": 0.0020,
+                "left_shoulder_yaw_joint": 1.2345,
+                "left_elbow_joint": 1.9294,
+            },  # viscous friction coefficient (Nm s/rad)
+        ),
+    },
+)
