@@ -8,6 +8,7 @@ from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg as SceneEntity
+from isaaclab.sensors import ImuCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
@@ -16,6 +17,7 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
     ActionsCfg,
     EventCfg,
     LocomotionVelocityRoughEnvCfg,
+    MySceneCfg,
     RewardsCfg,
 )
 
@@ -47,6 +49,18 @@ NXP_JOINT_NAMES = [
     "left_elbow_joint",
     "right_elbow_joint",
 ]
+
+
+@configclass
+class NXPScene(MySceneCfg):
+    """Scene configuration with an IMU on the robot."""
+
+    # offset mirrors the physical IMU mounting pose on hardware
+    imu = ImuCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/imu_link",
+        offset=ImuCfg.OffsetCfg(pos=(0.0, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0)),
+        debug_vis=False,
+    )
 
 
 @configclass
@@ -145,9 +159,14 @@ class NXPObervations:
         """Observations for proprioceptive group."""
 
         # observation terms (order preserved)
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+        base_ang_vel = ObsTerm(
+            func=mdp.imu_ang_vel,
+            params={"asset_cfg": SceneEntity("imu")},
+            noise=Unoise(n_min=-0.2, n_max=0.2),
+        )
         projected_gravity = ObsTerm(
-            func=mdp.projected_gravity,
+            func=mdp.imu_projected_gravity,
+            params={"asset_cfg": SceneEntity("imu")},
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
@@ -329,6 +348,7 @@ class NXPEvent(EventCfg):
 
 @configclass
 class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+    scene: NXPScene = NXPScene(num_envs=4096, env_spacing=2.5)
     actions: NXPActions = NXPActions()
     rewards: NXPRewards = NXPRewards()
     # events: NXPEvent = NXPEvent()
@@ -384,7 +404,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.undesired_contacts.weight = -1.0
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntity(
             "contact_forces",
-            body_names=[".*_upper_arm_link", ".*_hip_yaw_link", "pelvis_link"],
+            body_names=[".*_upper_arm_link", ".*_hip_yaw_link", "torso_link"],
         )
         self.rewards.joint_deviation_hip.weight = -0.2
         self.rewards.joint_deviation_knee.weight = -0.01
@@ -399,7 +419,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # terminations
-        self.terminations.base_contact.params["sensor_cfg"].body_names = "pelvis_link"
+        self.terminations.base_contact.params["sensor_cfg"].body_names = "torso_link"
 
 
 @configclass
