@@ -311,8 +311,8 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Randomization
         # startup
-        self.events.add_base_mass = None
-        self.events.base_com = None
+        self.events.add_base_mass.params["asset_cfg"].body_names = ["torso_link"]
+        self.events.base_com.params["asset_cfg"].body_names = ["torso_link"]
         # reset
         self.events.base_external_force_torque.params["asset_cfg"].body_names = ["pelvis_link"]
         self.events.reset_base.params = {
@@ -328,7 +328,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         }
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         # interval
-        self.events.push_robot = None
+        self.events.push_robot.interval_range_s = (5.0, 10.0)
 
         # Rewards inspired by isaac berkeley
         self.rewards.track_lin_vel_xy_exp.weight = 1.0
