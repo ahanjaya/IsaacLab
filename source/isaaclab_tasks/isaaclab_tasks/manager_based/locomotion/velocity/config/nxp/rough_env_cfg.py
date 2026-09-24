@@ -226,19 +226,9 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
         params={
-            "asset_cfg": SceneEntity("robot", body_names="pelvis_link"),
+            "asset_cfg": SceneEntity("robot", body_names="base"),
             "mass_distribution_params": (-5.0, 5.0),
             "operation": "add",
-        },
-    )
-
-    scale_all_link_masses = EventTerm(
-        func=mdp.randomize_rigid_body_mass,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntity("robot", body_names=".*"),
-            "mass_distribution_params": (0.9, 1.1),
-            "operation": "scale",
         },
     )
 
@@ -246,48 +236,17 @@ class NXPEvent(EventCfg):
         func=mdp.randomize_rigid_body_com,
         mode="startup",
         params={
-            "asset_cfg": SceneEntity("robot", body_names="pelvis_link"),
+            "asset_cfg": SceneEntity("robot", body_names="base"),
             "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
         },
     )
-
-    scale_all_joint_armature = EventTerm(
-        func=mdp.randomize_joint_parameters,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntity("robot", joint_names=[".*"]),
-            "armature_distribution_params": (0.5, 1.5),
-            "operation": "scale",
-        },
-    )
-
-    add_all_joint_default_pos = EventTerm(
-        func=mdp.randomize_joint_default_pos,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntity("robot", joint_names=[".*"]),
-            "pos_distribution_params": (-0.05, 0.05),
-            "operation": "add",
-        },
-    )
-
-    # ImplicitActuator model does not support friction modification
-    # scale_all_joint_friction_model = EventTerm(
-    #     func=mdp.randomize_joint_friction_model,
-    #     mode="startup",
-    #     params={
-    #         "asset_cfg": SceneEntity("robot", joint_names=[".*"]),
-    #         "friction_distribution_params": (0.9, 1.1),
-    #         "operation": "scale",
-    #     },
-    # )
 
     # reset
     base_external_force_torque = EventTerm(
         func=mdp.apply_external_force_torque,
         mode="reset",
         params={
-            "asset_cfg": SceneEntity("robot", body_names="pelvis_link"),
+            "asset_cfg": SceneEntity("robot", body_names="base"),
             "force_range": (0.0, 0.0),
             "torque_range": (-0.0, 0.0),
         },
@@ -302,9 +261,9 @@ class NXPEvent(EventCfg):
                 "x": (-0.5, 0.5),
                 "y": (-0.5, 0.5),
                 "z": (-0.5, 0.5),
-                "roll": (-0.0, 0.0),
-                "pitch": (-0.0, 0.0),
-                "yaw": (-0.0, 0.0),
+                "roll": (-0.5, 0.5),
+                "pitch": (-0.5, 0.5),
+                "yaw": (-0.5, 0.5),
             },
         },
     )
@@ -331,7 +290,7 @@ class NXPEvent(EventCfg):
 class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     actions: NXPActions = NXPActions()
     rewards: NXPRewards = NXPRewards()
-    # events: NXPEvent = NXPEvent()
+    events: NXPEvent = NXPEvent()
     observations: NXPObervations = NXPObervations()
 
     def __post_init__(self):
@@ -351,9 +310,10 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # Randomization
-        self.events.push_robot = None
+        # startup
         self.events.add_base_mass = None
-        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+        self.events.base_com = None
+        # reset
         self.events.base_external_force_torque.params["asset_cfg"].body_names = ["pelvis_link"]
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
@@ -366,7 +326,9 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "yaw": (0.0, 0.0),
             },
         }
-        self.events.base_com = None
+        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+        # interval
+        self.events.push_robot = None
 
         # Rewards inspired by isaac berkeley
         self.rewards.track_lin_vel_xy_exp.weight = 1.0
@@ -425,7 +387,7 @@ class NXPRoughEnvCfg_PLAY(NXPRoughEnvCfg):
         self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         # disable randomization for play
-        self.observations.policy.enable_corruption = False
+        self.observations.proprioceptive.enable_corruption = False
         # remove random pushing
         self.events.base_external_force_torque = None
         self.events.push_robot = None
