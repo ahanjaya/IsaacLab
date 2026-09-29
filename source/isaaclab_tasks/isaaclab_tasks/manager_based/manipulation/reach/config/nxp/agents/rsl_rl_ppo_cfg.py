@@ -44,6 +44,7 @@ class NXPReachPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         beta=0.1,
     )
 
+
 @configclass
 class NXPTeenReachPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24

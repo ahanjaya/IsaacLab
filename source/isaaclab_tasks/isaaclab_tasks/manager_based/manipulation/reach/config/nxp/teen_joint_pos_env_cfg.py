@@ -32,12 +32,12 @@ NXP_TEEN_LEFT_ARM_JOINT_NAMES = [
     "left_elbow_joint",
 ]
 
-# NXP_RIGHT_ARM_JOINT_NAMES = [
-#     "right_shoulder_pitch_joint",
-#     "right_shoulder_roll_joint",
-#     "right_shoulder_yaw_joint",
-#     "right_elbow_joint",
-# ]
+NXP_RIGHT_ARM_JOINT_NAMES = [
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+]
 
 
 @configclass
@@ -58,13 +58,13 @@ class ActionsCfg:
         preserve_order=True,
         use_zero_offset=True,
     )
-    # right_arm_action = mdp.RelativeJointPositionActionCfg(
-    #     asset_name="robot",
-    #     joint_names=NXP_RIGHT_ARM_JOINT_NAMES,
-    #     scale=0.05,
-    #     preserve_order=True,
-    #     use_zero_offset=True,
-    # )
+    right_arm_action = mdp.RelativeJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=NXP_RIGHT_ARM_JOINT_NAMES,
+        scale=0.05,
+        preserve_order=True,
+        use_zero_offset=True,
+    )
 
 
 @configclass
@@ -82,17 +82,17 @@ class CommandsCfg:
             pos_z=(0.05, 0.40),
         ),
     )
-        # right_ee_pose = mdp.UniformPositionCommandCfg(
-        #     asset_name="robot",
-        #     body_name="right_ee_link",
-        #     resampling_time_range=(4.0, 4.0),
-        #     debug_vis=True,
-        #     ranges=mdp.UniformPositionCommandCfg.Ranges(
-        #         pos_x=(0.2, 0.4),
-        #         pos_y=(-0.5, -0.1),
-        #         pos_z=(0.05, 0.5),
-        #     ),
-        # )
+    right_ee_pose = mdp.UniformPositionCommandCfg(
+        asset_name="robot",
+        body_name="right_ee_link",
+        resampling_time_range=(4.0, 4.0),
+        debug_vis=True,
+        ranges=mdp.UniformPositionCommandCfg.Ranges(
+            pos_x=(0.2, 0.4),
+            pos_y=(-0.5, -0.1),
+            pos_z=(0.05, 0.5),
+        ),
+    )
 
 
 @configclass
@@ -106,28 +106,32 @@ class ObservationsCfg:
         # observation terms (order preserved)
         left_joint_pos = ObsTerm(
             func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_TEEN_LEFT_ARM_JOINT_NAMES, preserve_order=True)},
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=NXP_TEEN_LEFT_ARM_JOINT_NAMES, preserve_order=True)
+            },
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
-        # right_joint_pos = ObsTerm(
-        #     func=mdp.joint_pos_rel,
-        #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_RIGHT_ARM_JOINT_NAMES, preserve_order=True)},
-        #     noise=Unoise(n_min=-0.01, n_max=0.01),
-        # )
+        right_joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_RIGHT_ARM_JOINT_NAMES, preserve_order=True)},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        )
         left_joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_TEEN_LEFT_ARM_JOINT_NAMES, preserve_order=True)},
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=NXP_TEEN_LEFT_ARM_JOINT_NAMES, preserve_order=True)
+            },
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
-        # right_joint_vel = ObsTerm(
-        #     func=mdp.joint_vel_rel,
-        #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_RIGHT_ARM_JOINT_NAMES, preserve_order=True)},
-        #     noise=Unoise(n_min=-0.01, n_max=0.01),
-        # )
+        right_joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_RIGHT_ARM_JOINT_NAMES, preserve_order=True)},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        )
         left_pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "left_ee_pose"})
-        # right_pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "right_ee_pose"})
+        right_pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "right_ee_pose"})
         left_actions = ObsTerm(func=mdp.last_action, params={"action_name": "left_arm_action"})
-        # right_actions = ObsTerm(func=mdp.last_action, params={"action_name": "right_arm_action"})
+        right_actions = ObsTerm(func=mdp.last_action, params={"action_name": "right_arm_action"})
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -147,11 +151,11 @@ class RewardsCfg:
         weight=-0.2,
         params={"asset_cfg": SceneEntityCfg("robot", body_names="left_ee_link"), "command_name": "left_ee_pose"},
     )
-    # right_end_effector_position_tracking = RewTerm(
-    #     func=mdp.position_command_error,
-    #     weight=-0.2,
-    #     params={"asset_cfg": SceneEntityCfg("robot", body_names="right_ee_link"), "command_name": "right_ee_pose"},
-    # )
+    right_end_effector_position_tracking = RewTerm(
+        func=mdp.position_command_error,
+        weight=-0.2,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names="right_ee_link"), "command_name": "right_ee_pose"},
+    )
     left_end_effector_position_tracking_fine_grained = RewTerm(
         func=mdp.position_command_error_tanh,
         weight=0.1,
@@ -161,15 +165,15 @@ class RewardsCfg:
             "command_name": "left_ee_pose",
         },
     )
-    # right_end_effector_position_tracking_fine_grained = RewTerm(
-    #     func=mdp.position_command_error_tanh,
-    #     weight=0.1,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names="right_ee_link"),
-    #         "std": 0.1,
-    #         "command_name": "right_ee_pose",
-    #     },
-    # )
+    right_end_effector_position_tracking_fine_grained = RewTerm(
+        func=mdp.position_command_error_tanh,
+        weight=0.1,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="right_ee_link"),
+            "std": 0.1,
+            "command_name": "right_ee_pose",
+        },
+    )
 
     # action penalty
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
@@ -180,11 +184,11 @@ class RewardsCfg:
         weight=-0.001,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_TEEN_LEFT_ARM_JOINT_NAMES, preserve_order=True)},
     )
-        # right_joint_vel = RewTerm(
-        #     func=mdp.joint_vel_l2,
-        #     weight=-0.001,
-        #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_RIGHT_ARM_JOINT_NAMES, preserve_order=True)},
-        # )
+    right_joint_vel = RewTerm(
+        func=mdp.joint_vel_l2,
+        weight=-0.001,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_RIGHT_ARM_JOINT_NAMES, preserve_order=True)},
+    )
 
 
 @configclass
@@ -199,9 +203,9 @@ class CurriculumCfg:
         func=mdp.modify_reward_weight, params={"term_name": "left_joint_vel", "weight": -0.001, "num_steps": 4500}
     )
 
-    # right_joint_vel = CurrTerm(
-    #     func=mdp.modify_reward_weight, params={"term_name": "right_joint_vel", "weight": -0.001, "num_steps": 4500}
-    # )
+    right_joint_vel = CurrTerm(
+        func=mdp.modify_reward_weight, params={"term_name": "right_joint_vel", "weight": -0.001, "num_steps": 4500}
+    )
 
 
 @configclass
