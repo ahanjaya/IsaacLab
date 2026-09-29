@@ -36,9 +36,6 @@ parser.add_argument(
 parser.add_argument("--plot", action="store_true", default=False, help="Plot robot joint actions and positions.")
 parser.add_argument("--real_time", action="store_true", default=False, help="Run in real-time.")
 parser.add_argument("--follow_robot", action="store_true", default=False, help="Follow the robot with the camera.")
-parser.add_argument("--udp_host", type=str, default="localhost", help="UDP host for publishing actions.")
-parser.add_argument("--udp_port", type=int, default=8888, help="UDP port for publishing actions.")
-parser.add_argument("--enable_udp", action="store_true", default=False, help="Enable UDP publishing of actions.")
 parser.add_argument("--use_jit", action="store_true", default=False, help="Use JIT for policy inference.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -65,15 +62,10 @@ installed_version = metadata.version("rsl-rl-lib")
 
 """Rest everything follows."""
 
-import json
-import multiprocessing as mp
 import os
-import socket
 import time
-from collections import deque
 
 import gymnasium as gym
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
@@ -100,121 +92,6 @@ np.set_printoptions(precision=4, suppress=True)
 # PLACEHOLDER: Extension template (do not remove this comment)
 
 
-def _plot_joint_visualization(queue) -> None:
-    plt.ion()  # Turn on interactive mode
-
-    # Configuration
-    joint_names = [
-        "Hip Pitch",
-        "Hip Roll",
-        "Hip Yaw",
-        "Knee",
-        "Ankle Pitch",
-        "Ankle Roll",
-        "Shoulder Pitch",
-        "Shoulder Roll",
-        "Shoulder Yaw",
-        "Elbow",
-    ]
-    num_joints = len(joint_names)
-    window_size = 50
-    ylim = (-1.0, 1.0)
-
-    # Create figure and axes
-    fig, ax = plt.subplots(num_joints, 2, figsize=(20, 15))
-
-    # Initialize data structures
-    joint_data = {}
-    lines = {}
-
-    for i, joint_name in enumerate(joint_names):
-        for side in ["left", "right"]:
-            col = 0 if side == "left" else 1
-            key = f"{side}_{joint_name.lower().replace(' ', '_')}"
-
-            # Create queues
-            joint_data[f"{key}_target"] = deque(maxlen=window_size)
-            joint_data[f"{key}_current"] = deque(maxlen=window_size)
-
-            # Create lines
-            (lines[f"{key}_target"],) = ax[i, col].plot(
-                joint_data[f"{key}_target"], label=f"{side.title()} {joint_name} Target"
-            )
-            (lines[f"{key}_current"],) = ax[i, col].plot(
-                joint_data[f"{key}_current"],
-                label=f"{side.title()} {joint_name} Current",
-            )
-
-            # Configure subplot
-            _configure_subplot(ax[i, col], f"{side.title()} {joint_name}", ylim)
-
-    def _update_joint_data(data_tuple):
-        """Update joint data from queue data."""
-        # Generate data keys programmatically from joint names
-        data_keys = [
-            f"{side}_{joint_name.lower().replace(' ', '_')}_{suffix}"
-            for joint_name in joint_names
-            for side in ["left", "right"]
-            for suffix in ["target", "current"]
-        ]
-
-        for i, key in enumerate(data_keys):
-            value = data_tuple[i]
-            if value is None:
-                joint_data[key].clear()
-            else:
-                joint_data[key].append(value)
-
-    def _update_plots():
-        """Update all plot lines."""
-        for i, joint_name in enumerate(joint_names):
-            for side in ["left", "right"]:
-                col = 0 if side == "left" else 1
-                key = f"{side}_{joint_name.lower().replace(' ', '_')}"
-
-                target_queue = joint_data[f"{key}_target"]
-                current_queue = joint_data[f"{key}_current"]
-
-                if target_queue:
-                    # Update action line
-                    lines[f"{key}_target"].set_xdata(range(len(target_queue)))
-                    lines[f"{key}_target"].set_ydata(target_queue)
-
-                    # Update position line
-                    lines[f"{key}_current"].set_xdata(range(len(current_queue)))
-                    lines[f"{key}_current"].set_ydata(current_queue)
-
-                    # Update axes
-                    ax[i, col].relim()
-                    ax[i, col].autoscale_view()
-
-    # Main loop
-    while True:
-        # Process queue data
-        while not queue.empty():
-            data_tuple = queue.get()
-            _update_joint_data(data_tuple)
-
-        # Update plots
-        _update_plots()
-
-        # Refresh display
-        fig.canvas.draw()
-        fig.canvas.flush_events()
-        plt.tight_layout()
-        time.sleep(0.02)
-
-
-def _configure_subplot(subplot, title, ylim):
-    """Configure a subplot with common settings."""
-    subplot.set_title(title)
-    subplot.set_xlabel("Time Step")
-    subplot.set_ylabel("Angle (rad)")
-    subplot.legend()
-    subplot.set_ylim(ylim)
-    subplot.grid(color="gray", linestyle="--", linewidth=0.5, alpha=0.7)
-
-
 def _resolve_resume_path(args_cli, agent_cfg, train_task_name: str, log_root_path: str) -> str | None:
     """Resolve the checkpoint path to resume from based on CLI arguments."""
     if args_cli.use_pretrained_checkpoint:
@@ -236,27 +113,12 @@ def _export_policy(runner, resume_path: str) -> str:
     return export_model_dir
 
 
-def _init_udp_socket(args_cli):
-    """Initialize a UDP socket for publishing actions, if enabled."""
-    if not args_cli.enable_udp:
-        return None
-    try:
-        udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        print(f"[INFO] UDP socket initialized. Publishing to {args_cli.udp_host}:{args_cli.udp_port}")
-        return udp_socket
-    except Exception as e:
-        print(f"[ERROR] Failed to initialize UDP socket: {e}")
-        return None
-
-
 def _run_play_loop(
     env,
     policy,
     lin_vel_estimator,
     args_cli,
     dt: float,
-    udp_socket,
-    plot_queue,
     obs,
     simulation_app,
     actor_obs_groups=None,
@@ -286,43 +148,11 @@ def _run_play_loop(
             # env stepping
             obs, _, dones, _ = env.step(actions)
 
-            # publish actions via UDP
-            if udp_socket is not None and args_cli.enable_udp:
-                obs_pos_idx = 9
-                obs_numpy = obs["proprioceptive"].detach().cpu().numpy()[0]
-                obs_pos_numpy = obs_numpy[obs_pos_idx : obs_pos_idx + 20]
-
-                actions_numpy = actions.detach().cpu().numpy()[0] * 0.5
-                actions_publish = actions.detach().cpu().numpy()[:12]
-                # actions_publish = obs["policy"].detach().cpu().numpy()[:, obs_pos_idx : obs_pos_idx + 12]
-
-                try:
-                    # create data payload
-                    data_payload = {"timestamp": time.time(), "timestep": timestep, "actions": actions_publish.tolist()}
-
-                    # convert to JSON and send via UDP
-                    json_data = json.dumps(data_payload)
-                    udp_socket.sendto(json_data.encode("utf-8"), (args_cli.udp_host, args_cli.udp_port))
-                except Exception as e:
-                    print(f"[WARNING] Failed to send UDP data: {e}")
-
             # reset recurrent states for episodes that have terminated
             if args_cli.use_jit:
                 policy.reset()
             else:
                 policy.reset(dones)
-
-            if args_cli.plot:
-                # Interleave actions and positions for all 20 joints
-                joint_data = tuple(value for i in range(20) for value in (actions_numpy[i], obs_pos_numpy[i]))
-                plot_queue.put(joint_data)
-
-        done_env_ids = dones.nonzero(as_tuple=False).flatten()
-
-        if done_env_ids.shape[0] > 0:
-            if args_cli.plot:
-                none_tuple = (None,) * 40
-                plot_queue.put(none_tuple)
 
         timestep += 1
 
@@ -423,16 +253,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print("[INFO] Using JIT for policy inference.")
         policy = torch.jit.load(os.path.join(export_model_dir, "policy.pt")).to(env.unwrapped.device)
 
-    plot_queue = None
-    if args_cli.plot:
-        # Start the plotting function in a separate process
-        plot_queue = mp.Queue()
-        mp_plot = mp.Process(target=_plot_joint_visualization, args=(plot_queue,))
-        mp_plot.start()
-
-    # initialize UDP socket for publishing actions
-    udp_socket = _init_udp_socket(args_cli)
-
     # reset environment
     obs = env.get_observations()
 
@@ -451,17 +271,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         lin_vel_estimator,
         args_cli,
         dt,
-        udp_socket,
-        plot_queue,
         obs,
         simulation_app,
         actor_obs_groups,
     )
-
-    # close UDP socket if initialized
-    if udp_socket is not None:
-        udp_socket.close()
-        print("[INFO] UDP socket closed.")
 
     # close the simulator
     env.close()
