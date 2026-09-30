@@ -60,6 +60,7 @@ class MLPModel(nn.Module):
 
         # Resolve observation groups and dimensions
         self.obs_groups, self.obs_dim = self._get_obs_dim(obs, obs_groups, obs_set)
+        self.obs_group_dims = [obs[obs_group].shape[-1] for obs_group in self.obs_groups]
 
         # Observation normalization
         self.obs_normalization = obs_normalization
@@ -224,32 +225,43 @@ class _TorchMLPModel(nn.Module):
             self.deterministic_output = nn.Identity()
 
         self.has_lin_vel_estimator = lin_vel_estimator is not None
+        # offsets into the JIT input, which holds every obs group except "estimated_lin_vel"
+        self.proprio_start = 0
+        self.proprio_end = 0
+        self.lin_vel_insert_pos = 0
         if self.has_lin_vel_estimator:
-            if sorted(model.obs_groups) != sorted(["estimated_lin_vel", "proprioceptive"]):
+            if "estimated_lin_vel" not in model.obs_groups or "proprioceptive" not in model.obs_groups:
                 raise ValueError(
-                    "Embedding a lin_vel_estimator in the JIT export requires the model's obs_groups to be exactly"
-                    f" ['estimated_lin_vel', 'proprioceptive'], got {model.obs_groups}."
+                    "Embedding a lin_vel_estimator in the JIT export requires the model's obs_groups to contain"
+                    f" 'estimated_lin_vel' and 'proprioceptive', got {model.obs_groups}."
                 )
             self.lin_vel_estimator = copy.deepcopy(lin_vel_estimator)
-            self.lin_vel_first = model.obs_groups[0] == "estimated_lin_vel"
+            offset = 0
+            for obs_group, dim in zip(model.obs_groups, model.obs_group_dims):
+                if obs_group == "estimated_lin_vel":
+                    self.lin_vel_insert_pos = offset
+                    continue
+                if obs_group == "proprioceptive":
+                    self.proprio_start = offset
+                    self.proprio_end = offset + dim
+                offset += dim
         else:
             # placeholder submodule so TorchScript always sees a concrete module
             self.lin_vel_estimator = nn.Identity()
-            self.lin_vel_first = True
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run deterministic inference. ``x`` is the raw proprioceptive observation.
+        """Run deterministic inference.
 
-        If a lin_vel_estimator was embedded at export time, ``x`` should be the raw ``"proprioceptive"``
-        observation and the estimated linear velocity is computed and concatenated internally. Otherwise, ``x``
-        must be the pre-concatenated observations expected by the model.
+        If a lin_vel_estimator was embedded at export time, ``x`` should be the model's observation groups
+        concatenated in order with ``"estimated_lin_vel"`` omitted; the estimate is computed from the
+        ``"proprioceptive"`` slice and inserted internally. Otherwise, ``x`` must be the pre-concatenated
+        observations expected by the model.
         """
         if self.has_lin_vel_estimator:
-            estimated_lin_vel = self.lin_vel_estimator(x)
-            if self.lin_vel_first:
-                x = torch.cat([estimated_lin_vel, x], dim=-1)
-            else:
-                x = torch.cat([x, estimated_lin_vel], dim=-1)
+            estimated_lin_vel = self.lin_vel_estimator(x[..., self.proprio_start : self.proprio_end])
+            x = torch.cat(
+                [x[..., : self.lin_vel_insert_pos], estimated_lin_vel, x[..., self.lin_vel_insert_pos :]], dim=-1
+            )
         x = self.obs_normalizer(x)
         out = self.mlp(x)
         return self.deterministic_output(out)

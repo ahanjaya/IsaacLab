@@ -132,14 +132,11 @@ def _run_play_loop(
         with torch.inference_mode():
             # agent stepping
             if args_cli.use_jit:
+                jit_obs_groups = actor_obs_groups
                 if lin_vel_estimator is not None:
-                    # lin_vel_estimator is embedded in the exported model, so it takes raw proprioceptive obs
-                    actions = policy(obs["proprioceptive"])
-                elif len(actor_obs_groups) == 1:
-                    actions = policy(obs[actor_obs_groups[0]])
-                else:
-                    actor_obs = torch.cat([obs[group] for group in actor_obs_groups], dim=-1)
-                    actions = policy(actor_obs)
+                    # lin_vel_estimator is embedded in the exported model, so estimated_lin_vel is computed inside
+                    jit_obs_groups = [group for group in actor_obs_groups if group != "estimated_lin_vel"]
+                actions = policy(torch.cat([obs[group] for group in jit_obs_groups], dim=-1))
             else:
                 if lin_vel_estimator is not None:
                     obs["estimated_lin_vel"] = lin_vel_estimator(obs["proprioceptive"])
