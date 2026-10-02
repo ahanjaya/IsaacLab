@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -47,6 +48,9 @@ NXP_JOINT_NAMES = [
     "left_elbow_joint",
     "right_elbow_joint",
 ]
+
+# GAC (Grid Adaptive Config)
+NXP_GAC_CFG = mdp.GridAdaptiveConfig()
 
 
 @configclass
@@ -181,26 +185,26 @@ class NXPObervations:
             self.enable_corruption = False
             self.concatenate_terms = True
 
-    # @configclass
-    # class HeightScanCfg(ObsGroup):
-    #     """Observations for height_scan group."""
+    @configclass
+    class HeightScanCfg(ObsGroup):
+        """Observations for height_scan group."""
 
-    #     height_scan = ObsTerm(
-    #         func=mdp.height_scan,
-    #         params={"sensor_cfg": SceneEntity("height_scanner")},
-    #         noise=Unoise(n_min=-0.1, n_max=0.1),
-    #         clip=(-1.0, 1.0),
-    #     )
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntity("height_scanner")},
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            clip=(-1.0, 1.0),
+        )
 
-    #     def __post_init__(self):
-    #         self.enable_corruption = True
-    #         self.concatenate_terms = True
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
 
     # observation groups
     proprioceptive: ProprioceptiveCfg = ProprioceptiveCfg()
     lin_vel: LinVelCfg = LinVelCfg()
     estimated_lin_vel: EstimatedLinVelCfg = EstimatedLinVelCfg()
-    # height_scan: HeightScanCfg = HeightScanCfg()
+    height_scan: HeightScanCfg = HeightScanCfg()
 
 
 @configclass
@@ -287,10 +291,28 @@ class NXPEvent(EventCfg):
 
 
 @configclass
+class NXPCommands:
+    """Command specifications for the MDP."""
+
+    base_velocity = mdp.GridAdaptiveVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        debug_vis=True,
+        gac_config=NXP_GAC_CFG,
+        lin_vel_xy_std=0.5,
+        ang_vel_z_std=0.5,
+        ranges=mdp.GridAdaptiveVelocityCommandCfg.Ranges(
+            lin_vel_x=NXP_GAC_CFG.limit_x_range, lin_vel_y=(-0.5, 0.5), ang_vel_z=NXP_GAC_CFG.limit_w_range
+        ),
+    )
+
+
+@configclass
 class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     actions: NXPActions = NXPActions()
     rewards: NXPRewards = NXPRewards()
     events: NXPEvent = NXPEvent()
+    commands: NXPCommands = NXPCommands()
     observations: NXPObervations = NXPObervations()
 
     def __post_init__(self):
@@ -299,6 +321,13 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Scene
         self.scene.robot = NXP_V1_HUMANOID_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/pelvis_link"
+
+        track_lin_vel_xy_std = 0.5
+        track_ang_vel_z_std = 0.5
+
+        # Commands
+        self.commands.base_velocity.lin_vel_xy_std = track_lin_vel_xy_std
+        self.commands.base_velocity.ang_vel_z_std = track_ang_vel_z_std
 
         # Observation
         self.observations.proprioceptive.joint_pos.params["asset_cfg"] = SceneEntity(
@@ -331,6 +360,9 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.push_robot.interval_range_s = (5.0, 10.0)
 
         # Rewards inspired by isaac berkeley
+        self.rewards.track_lin_vel_xy_exp.params["std"] = track_lin_vel_xy_std
+        self.rewards.track_ang_vel_z_exp.params["std"] = track_ang_vel_z_std
+
         self.rewards.track_lin_vel_xy_exp.weight = 1.0
         self.rewards.track_ang_vel_z_exp.weight = 0.5
         self.rewards.lin_vel_z_l2.weight = -2.0
@@ -355,10 +387,12 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # base height is measured against the terrain on rough ground
         self.rewards.base_height_l2.params["sensor_cfg"] = SceneEntity("height_scanner")
 
-        # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.0, 1.0)
+        # Commands: lin_vel_x / ang_vel_z are sampled from the GAC grid, not from `ranges`
+        self.commands.base_velocity.gac_config.linvel_thresh = 0.75
+        self.commands.base_velocity.gac_config.angvel_thresh = 0.75
+
+        # Commands: lin_vel_y is sampled from the ranges
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
         # terminations
         self.terminations.base_contact.params["sensor_cfg"].body_names = "torso_link"

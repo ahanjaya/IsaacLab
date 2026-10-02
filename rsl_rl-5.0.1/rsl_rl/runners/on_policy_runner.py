@@ -142,6 +142,14 @@ class OnPolicyRunner:
         if self.linvel_estimator is not None:
             saved_dict["lin_vel_estimator_state_dict"] = self.linvel_estimator.state_dict()
         torch.save(saved_dict, path)
+        # Save curriculum grid plots (e.g. GAC) next to the checkpoint
+        command_manager = getattr(getattr(self.env, "unwrapped", None), "command_manager", None)
+        if command_manager is not None:
+            for name in command_manager.active_terms:
+                term = command_manager.get_term(name)
+                if hasattr(term, "save_grid_density"):
+                    root, stem = os.path.split(os.path.splitext(path)[0])
+                    term.save_grid_density(os.path.join(root, f"gac_{stem}.png"))
         # Upload model to external logging services
         self.logger.save_model(path, self.current_learning_iteration)
 

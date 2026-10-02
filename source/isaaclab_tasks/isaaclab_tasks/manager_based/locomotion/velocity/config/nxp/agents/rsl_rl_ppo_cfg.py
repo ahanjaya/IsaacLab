@@ -78,3 +78,8 @@ class NXPFlatPPORunnerCfg(NXPRoughPPORunnerCfg):
         self.experiment_name = "nxp_v1_flat"
         self.policy.actor_hidden_dims = [512, 256, 128]
         self.policy.critic_hidden_dims = [512, 256, 128]
+
+        self.obs_groups = {
+            "actor": ["estimated_lin_vel", "proprioceptive"],
+            "critic": ["lin_vel", "proprioceptive"],
+        }

@@ -21,6 +21,7 @@ class NXPFlatEnvCfg(NXPRoughEnvCfg):
         self.scene.terrain.terrain_generator = None
 
         # no height scan
+        self.observations.height_scan = None
         self.scene.height_scanner = None
 
         # enable domain randomization
@@ -41,11 +42,6 @@ class NXPFlatEnvCfg(NXPRoughEnvCfg):
         # flat terrain: measure height in world frame, there is no height scanner
         self.rewards.base_height_l2.weight = -10.0
         self.rewards.base_height_l2.params["sensor_cfg"] = None
-
-        # Commands
-        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
-        self.commands.base_velocity.ranges.ang_vel_z = (-1.0, 1.0)
 
 
 class NXPFlatEnvCfg_PLAY(NXPFlatEnvCfg):

@@ -14,9 +14,12 @@ import torch
 
 import omni.log
 
+import isaaclab.utils.math as math_utils
 from isaaclab.devices import Se2Gamepad, Se2GamepadCfg
 from isaaclab.envs.mdp.commands import UniformVelocityCommand, UniformVelocityCommandCfg
 from isaaclab.utils import configclass
+
+from .grid_adaptive_curriculum import GridAdaptiveConfig, GridAdaptiveCurriculum
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -197,3 +200,169 @@ class Se2GamepadVelocityCommandCfg(UniformVelocityCommandCfg):
     resampling_time_range: tuple[float, float] = (0.0, 0.0)  # No automatic resampling for teleop
     rel_standing_envs: float = 0.0  # No standing environments for teleop
     debug_vis: bool = True  # Enable visualization by default for teleop
+
+
+class GridAdaptiveVelocityCommand(UniformVelocityCommand):
+    """Command generator that samples linear-x and angular-z velocity commands from a grid adaptive curriculum.
+
+    Implementation based on "Rapid Locomotion via Reinforcement Learning" (2022) from Margolis et. al.
+    https://arxiv.org/abs/2205.02824
+
+    Instead of sampling commands uniformly from a fixed range, commands are drawn from a
+    :class:`~isaaclab_tasks.manager_based.locomotion.velocity.mdp.grid_adaptive_curriculum.GridAdaptiveCurriculum`.
+    Every time a command is about to be resampled, the tracking performance achieved while it was active is
+    evaluated. If both the linear and angular velocity tracking rewards (computed with the same exponential
+    kernel as the ``track_lin_vel_xy_yaw_frame_exp``/``track_ang_vel_z_world_exp`` reward terms) stayed above
+    their configured thresholds on average, the curriculum grid is expanded around that command, gradually
+    widening the range of commands that can be sampled. The linear-y velocity command is still sampled
+    uniformly from :attr:`~UniformVelocityCommandCfg.Ranges.lin_vel_y`.
+    """
+
+    cfg: GridAdaptiveVelocityCommandCfg
+    """The command generator configuration."""
+
+    def __init__(self, cfg: GridAdaptiveVelocityCommandCfg, env: ManagerBasedEnv):
+        """Initialize the grid adaptive velocity command generator.
+
+        Args:
+            cfg: The configuration of the command generator.
+            env: The environment.
+        """
+        super().__init__(cfg, env)
+
+        self._gac = GridAdaptiveCurriculum(self.cfg.gac_config)
+
+        # running sums used to score the tracking success of the command since its last resampling
+        self._lin_vel_xy_reward_sum = torch.zeros(self.num_envs, device=self.device)
+        self._ang_vel_z_reward_sum = torch.zeros(self.num_envs, device=self.device)
+        self._command_steps = torch.zeros(self.num_envs, device=self.device)
+
+        # same sums but over the whole episode (read by the terrain curriculum before the reset)
+        self._episode_lin_vel_xy_reward_sum = torch.zeros(self.num_envs, device=self.device)
+        self._episode_ang_vel_z_reward_sum = torch.zeros(self.num_envs, device=self.device)
+        self._episode_steps = torch.zeros(self.num_envs, device=self.device)
+
+        self.metrics["gac_lin_score"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["gac_ang_score"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["gac_num_bins"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["gac_success_rate"] = torch.zeros(self.num_envs, device=self.device)
+
+    def __str__(self) -> str:
+        """Return a string representation of the command generator."""
+        msg = "GridAdaptiveVelocityCommand:\n"
+        msg += f"\tCommand dimension: {tuple(self.command.shape[1:])}\n"
+        msg += f"\tResampling time range: {self.cfg.resampling_time_range}\n"
+        msg += f"\tGAC updates so far: {self._gac.get_num_updates()}"
+        return msg
+
+    def save_grid_density(self, path: str) -> None:
+        """Save a plot of the curriculum grid to ``path``."""
+        self._gac.save_grid_density(path)
+
+    def get_episode_tracking_scores(self, env_ids: Sequence[int]) -> tuple[torch.Tensor, torch.Tensor]:
+        """Average linear and angular velocity tracking rewards over the current episode."""
+        steps = self._episode_steps[env_ids].clamp(min=1.0)
+        return (
+            self._episode_lin_vel_xy_reward_sum[env_ids] / steps,
+            self._episode_ang_vel_z_reward_sum[env_ids] / steps,
+        )
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> dict[str, float]:
+        extras = super().reset(env_ids)
+        ids = slice(None) if env_ids is None else env_ids
+        self._episode_lin_vel_xy_reward_sum[ids] = 0.0
+        self._episode_ang_vel_z_reward_sum[ids] = 0.0
+        self._episode_steps[ids] = 0.0
+        return extras
+
+    """
+    Implementation specific functions.
+    """
+
+    def _update_metrics(self):
+        super()._update_metrics()
+
+        # tracking rewards computed with the same exponential kernel used by the locomotion reward terms
+        vel_yaw = math_utils.quat_apply_inverse(
+            math_utils.yaw_quat(self.robot.data.root_quat_w), self.robot.data.root_lin_vel_w[:, :3]
+        )
+        lin_vel_xy_error = torch.sum(torch.square(self.vel_command_b[:, :2] - vel_yaw[:, :2]), dim=1)
+        ang_vel_z_error = torch.square(self.vel_command_b[:, 2] - self.robot.data.root_ang_vel_w[:, 2])
+
+        lin_vel_xy_reward = torch.exp(-lin_vel_xy_error / self.cfg.lin_vel_xy_std**2)
+        ang_vel_z_reward = torch.exp(-ang_vel_z_error / self.cfg.ang_vel_z_std**2)
+        self._lin_vel_xy_reward_sum += lin_vel_xy_reward
+        self._ang_vel_z_reward_sum += ang_vel_z_reward
+        self._command_steps += 1
+        self._episode_lin_vel_xy_reward_sum += lin_vel_xy_reward
+        self._episode_ang_vel_z_reward_sum += ang_vel_z_reward
+        self._episode_steps += 1
+
+    def _resample_command(self, env_ids: Sequence[int]):
+        if isinstance(env_ids, slice):
+            ids = torch.arange(self.num_envs, device=self.device)
+        else:
+            ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+
+        # score the command that is about to be replaced and expand the curriculum around it if successful
+        tracked = self._command_steps[ids] > 0
+        if tracked.any():
+            tracked_ids = ids[tracked]
+            lin_vel_xy_avg = self._lin_vel_xy_reward_sum[tracked_ids] / self._command_steps[tracked_ids]
+            ang_vel_z_avg = self._ang_vel_z_reward_sum[tracked_ids] / self._command_steps[tracked_ids]
+            self.metrics["gac_lin_score"][tracked_ids] = lin_vel_xy_avg
+            self.metrics["gac_ang_score"][tracked_ids] = ang_vel_z_avg
+            successful = (lin_vel_xy_avg >= self.cfg.gac_config.linvel_thresh) & (
+                ang_vel_z_avg >= self.cfg.gac_config.angvel_thresh
+            )
+            self.metrics["gac_success_rate"][tracked_ids] = successful.float()
+            if successful.any():
+                success_ids = tracked_ids[successful]
+                successful_cmds = torch.stack(
+                    (self.vel_command_b[success_ids, 0], self.vel_command_b[success_ids, 2]), dim=1
+                )
+                self._gac.update_neighbors_from_cmds(successful_cmds.cpu().numpy())
+        self.metrics["gac_num_bins"][:] = self._gac.get_num_available_bins()
+
+        self._lin_vel_xy_reward_sum[ids] = 0.0
+        self._ang_vel_z_reward_sum[ids] = 0.0
+        self._command_steps[ids] = 0.0
+
+        # sample new linear-x and angular-z commands from the curriculum grid
+        new_cmds = self._gac.sample_command(len(ids))
+        new_cmds = torch.as_tensor(new_cmds, dtype=torch.float32, device=self.device)
+        self.vel_command_b[ids, 0] = new_cmds[:, 0]
+        self.vel_command_b[ids, 2] = new_cmds[:, 1]
+
+        # linear-y velocity is still sampled uniformly
+        r = torch.empty(len(ids), device=self.device)
+        self.vel_command_b[ids, 1] = r.uniform_(*self.cfg.ranges.lin_vel_y)
+
+        # update standing envs
+        self.is_standing_env[ids] = r.uniform_(0.0, 1.0) <= self.cfg.rel_standing_envs
+
+
+@configclass
+class GridAdaptiveVelocityCommandCfg(UniformVelocityCommandCfg):
+    """Configuration for the grid adaptive velocity command generator.
+
+    Note:
+        :attr:`~UniformVelocityCommandCfg.Ranges.lin_vel_x` and :attr:`~UniformVelocityCommandCfg.Ranges.ang_vel_z`
+        are ignored since those commands are sampled from :attr:`gac_config` instead. They must still be set to
+        satisfy the base class, e.g. to :attr:`gac_config`'s ``limit_x_range``/``limit_w_range``.
+        :attr:`~UniformVelocityCommandCfg.Ranges.lin_vel_y` is still used as-is.
+    """
+
+    class_type: type = GridAdaptiveVelocityCommand
+
+    gac_config: GridAdaptiveConfig = GridAdaptiveConfig()
+    """Configuration of the underlying grid adaptive curriculum (bin resolution, limits, thresholds)."""
+
+    lin_vel_xy_std: float = 0.5
+    """Standard deviation of the exponential kernel used to score linear velocity tracking success."""
+
+    ang_vel_z_std: float = 0.5
+    """Standard deviation of the exponential kernel used to score angular velocity tracking success."""
+
+    heading_command: bool = False  # --> the curriculum directly controls the angular-z velocity command.
+    rel_standing_envs: float = 0.0  # --> commands are always moving, matching the GAC reference implementation.

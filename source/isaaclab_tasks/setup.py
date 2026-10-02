@@ -25,6 +25,9 @@ INSTALL_REQUIRES = [
     # basic logger
     "tensorboard",
     "numba",
+    # plotting
+    "matplotlib",
+    "seaborn",
 ]
 
 PYTORCH_INDEX_URL = ["https://download.pytorch.org/whl/cu128"]
