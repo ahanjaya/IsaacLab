@@ -4,6 +4,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 
+import copy
+import math
+from typing import Literal
+
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -290,21 +294,42 @@ class NXPEvent(EventCfg):
     )
 
 
+UNIFORM_VEL_CMD_CFG = mdp.UniformVelocityCommandCfg(
+    asset_name="robot",
+    resampling_time_range=(10.0, 10.0),
+    rel_standing_envs=0.02,
+    rel_heading_envs=1.0,
+    heading_command=True,
+    heading_control_stiffness=0.5,
+    debug_vis=True,
+    ranges=mdp.UniformVelocityCommandCfg.Ranges(
+        lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
+    ),
+)
+
+GAC_VEL_CMD_CFG = mdp.GridAdaptiveVelocityCommandCfg(
+    asset_name="robot",
+    resampling_time_range=(10.0, 10.0),
+    debug_vis=True,
+    gac_config=NXP_GAC_CFG,
+    lin_vel_xy_std=0.5,
+    ang_vel_z_std=0.5,
+    ranges=mdp.GridAdaptiveVelocityCommandCfg.Ranges(
+        lin_vel_x=NXP_GAC_CFG.limit_x_range, lin_vel_y=(-0.5, 0.5), ang_vel_z=NXP_GAC_CFG.limit_w_range
+    ),
+)
+
+NXP_VEL_CMD_CFGS = {
+    "uniform": UNIFORM_VEL_CMD_CFG,
+    "gac": GAC_VEL_CMD_CFG,
+}
+
+
 @configclass
 class NXPCommands:
     """Command specifications for the MDP."""
 
-    base_velocity = mdp.GridAdaptiveVelocityCommandCfg(
-        asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        debug_vis=True,
-        gac_config=NXP_GAC_CFG,
-        lin_vel_xy_std=0.5,
-        ang_vel_z_std=0.5,
-        ranges=mdp.GridAdaptiveVelocityCommandCfg.Ranges(
-            lin_vel_x=NXP_GAC_CFG.limit_x_range, lin_vel_y=(-0.5, 0.5), ang_vel_z=NXP_GAC_CFG.limit_w_range
-        ),
-    )
+    base_velocity: mdp.UniformVelocityCommandCfg = NXP_VEL_CMD_CFGS
 
 
 @configclass
@@ -315,9 +340,14 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     commands: NXPCommands = NXPCommands()
     observations: NXPObervations = NXPObervations()
 
+    """Velocity command generator: ``"uniform"`` or ``"gac"`` (grid adaptive curriculum)."""
+    command_type: Literal["uniform", "gac"] = "uniform"
+
     def __post_init__(self):
         # post init of parent
         super().__post_init__()
+        # Command generator
+        self.commands.base_velocity = copy.deepcopy(NXP_VEL_CMD_CFGS[self.command_type])
         # Scene
         self.scene.robot = NXP_V1_HUMANOID_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/pelvis_link"
@@ -326,8 +356,13 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         track_ang_vel_z_std = 0.5
 
         # Commands
-        self.commands.base_velocity.lin_vel_xy_std = track_lin_vel_xy_std
-        self.commands.base_velocity.ang_vel_z_std = track_ang_vel_z_std
+        if self.command_type == "gac":
+            self.commands.base_velocity.lin_vel_xy_std = track_lin_vel_xy_std
+            self.commands.base_velocity.ang_vel_z_std = track_ang_vel_z_std
+            
+            # lin_vel_x / ang_vel_z are sampled from the GAC grid, not from `ranges`
+            self.commands.base_velocity.gac_config.linvel_thresh = 0.75
+            self.commands.base_velocity.gac_config.angvel_thresh = 0.75
 
         # Observation
         self.observations.proprioceptive.joint_pos.params["asset_cfg"] = SceneEntity(
@@ -386,10 +421,6 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.flat_orientation_l2.weight = -5.0
         # base height is measured against the terrain on rough ground
         self.rewards.base_height_l2.params["sensor_cfg"] = SceneEntity("height_scanner")
-
-        # Commands: lin_vel_x / ang_vel_z are sampled from the GAC grid, not from `ranges`
-        self.commands.base_velocity.gac_config.linvel_thresh = 0.75
-        self.commands.base_velocity.gac_config.angvel_thresh = 0.75
 
         # Commands: lin_vel_y is sampled from the ranges
         self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
