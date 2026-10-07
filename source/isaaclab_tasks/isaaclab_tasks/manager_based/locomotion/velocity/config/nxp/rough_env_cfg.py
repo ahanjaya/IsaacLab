@@ -133,8 +133,14 @@ class NXPRewards(RewardsCfg):
     )
 
     # Upright posture: L1 keeps a gradient near zero tilt, so the policy cannot lean to accelerate
-    base_orientation_l1 = RewTerm(func=mdp.base_orientation_l1, weight=-2.0)
-    base_pitch_l1 = RewTerm(func=mdp.base_pitch_l1, weight=-2.0)
+    # roll and pitch are penalized separately so the pitch term alone sets the lean target
+    base_roll_l1 = RewTerm(func=mdp.base_roll_l1, weight=-2.0)
+    base_pitch_l1 = RewTerm(
+        func=mdp.base_pitch_cmd_l1,
+        weight=-2.0,
+        # lean forward on backward commands to counter the backward lean seen on hardware
+        params={"command_name": "base_velocity", "backward_lean": math.radians(3.0), "vel_ref": 0.5},
+    )
     base_height_l2 = RewTerm(
         func=mdp.base_height_l2,
         weight=-10.0,
@@ -235,7 +241,7 @@ class NXPEvent(EventCfg):
         mode="startup",
         params={
             "asset_cfg": SceneEntity("robot", body_names="base"),
-            "mass_distribution_params": (-5.0, 5.0),
+            "mass_distribution_params": (-10.0, 10.0),
             "operation": "add",
         },
     )
@@ -418,7 +424,6 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_deviation_hip.weight = -0.2
         self.rewards.joint_deviation_knee.weight = -0.01
         self.rewards.joint_deviation_arms.weight = -0.1
-        self.rewards.flat_orientation_l2.weight = -5.0
         # base height is measured against the terrain on rough ground
         self.rewards.base_height_l2.params["sensor_cfg"] = SceneEntity("height_scanner")
 

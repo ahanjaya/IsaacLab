@@ -11,6 +11,7 @@ specify the reward function and its parameters.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import torch
@@ -35,10 +36,35 @@ def base_orientation_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = Scen
     return torch.sum(torch.abs(asset.data.projected_gravity_b[:, :2]), dim=1)
 
 
+def base_roll_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize sideways lean of the base using an L1 kernel."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.abs(asset.data.projected_gravity_b[:, 1])
+
+
 def base_pitch_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize forward/backward lean of the base using an L1 kernel."""
     asset: RigidObject = env.scene[asset_cfg.name]
     return torch.abs(asset.data.projected_gravity_b[:, 0])
+
+
+def base_pitch_cmd_l1(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    backward_lean: float = 0.05,
+    vel_ref: float = 1.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize deviation of the base pitch from a command-dependent target using an L1 kernel.
+
+    The target is upright for forward/standing commands and leans forward by up to ``backward_lean`` rad
+    for backward commands, scaled linearly with the backward speed up to ``vel_ref`` (m/s).
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    vx_cmd = env.command_manager.get_command(command_name)[:, 0]
+    # forward lean (nose down) gives positive projected gravity x in the base frame
+    target = math.sin(backward_lean) * torch.clamp(-vx_cmd / vel_ref, 0.0, 1.0)
+    return torch.abs(asset.data.projected_gravity_b[:, 0] - target)
 
 
 def feet_air_time(

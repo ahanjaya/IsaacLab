@@ -37,7 +37,7 @@ class NXPFlatEnvCfg(NXPRoughEnvCfg):
         self.rewards.feet_air_time.weight = 0.5
         self.rewards.flat_orientation_l2.weight = -5.0
         self.rewards.ang_vel_xy_l2.weight = -0.2
-        self.rewards.base_orientation_l1.weight = -2.0
+        self.rewards.base_roll_l1.weight = -2.0
         self.rewards.base_pitch_l1.weight = -2.0
         # flat terrain: measure height in world frame, there is no height scanner
         self.rewards.base_height_l2.weight = -10.0
