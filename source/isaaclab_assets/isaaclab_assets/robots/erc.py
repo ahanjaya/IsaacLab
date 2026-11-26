@@ -34,7 +34,7 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
             max_depenetration_velocity=1.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=False,
+            enabled_self_collisions=True,
             solver_position_iteration_count=8,
             solver_velocity_iteration_count=0,
         ),
@@ -62,6 +62,8 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
             "right_shoulder_yaw_joint": 0.1309,
             "left_elbow_joint": 0.1745,
             "right_elbow_joint": -0.1745,
+            "left_wrist_yaw_joint": 0.0000,
+            "right_wrist_yaw_joint": 0.0000,
             "head_pan_joint": 0.0000,
             "head_tilt_joint": 0.0000,
         },
@@ -241,6 +243,36 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
                 "right_shoulder_yaw_joint": 3.108745,
                 "left_elbow_joint": 0.326940,
                 "right_elbow_joint": 1.044234,
+            },  # viscous friction coefficient (Nm s/rad)
+        ),
+        "rs05": DCMotorCfg(
+            joint_names_expr=[".*_wrist_yaw_.*"],
+            saturation_effort=5.5 * 2.0,
+            effort_limit=5.5 * 2.0,
+            velocity_limit=50.0,
+            stiffness={
+                "left_wrist_yaw_joint": 306.8630,
+                "right_wrist_yaw_joint": 499.6256,
+            },  # P gain in Nm/rad
+            damping={
+                "left_wrist_yaw_joint": 0.2487,
+                "right_wrist_yaw_joint": 3.3666,
+            },  # D gain in Nm s/rad
+            armature={
+                "left_wrist_yaw_joint": 0.0400,
+                "right_wrist_yaw_joint": 0.0601,
+            },  # rotor inertia (kg m^2)
+            friction={
+                "left_wrist_yaw_joint": 0.4852,
+                "right_wrist_yaw_joint": 0.0962,
+            },  # static (Coulomb) friction coefficient (Nm)
+            dynamic_friction={
+                "left_wrist_yaw_joint": 0.4852,
+                "right_wrist_yaw_joint": 0.0962,
+            },  # dynamic friction coefficient (Nm); equal to static for Coulomb model
+            viscous_friction={
+                "left_wrist_yaw_joint": 1.9294,
+                "right_wrist_yaw_joint": 0.5984,
             },  # viscous friction coefficient (Nm s/rad)
         ),
         "rs00": DCMotorCfg(

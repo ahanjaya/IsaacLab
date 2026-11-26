@@ -75,6 +75,21 @@ class RelativeJointPositionActionCfg(JointActionCfg):
 
 
 @configclass
+class PolynomialRelativeJointPositionActionCfg(RelativeJointPositionActionCfg):
+    """Configuration for the relative joint position action with a polynomial mapping on selected joints.
+
+    See :class:`PolynomialRelativeJointPositionAction` for more details.
+    """
+
+    class_type: type[ActionTerm] = joint_actions.PolynomialRelativeJointPositionAction
+
+    polynomial_joint_names: list[str] = MISSING
+    """Joint names or regex expressions (subset of :attr:`joint_names`) the polynomial is applied to."""
+    polynomial_coefficients: list[float] = MISSING
+    """Polynomial coefficients ordered from the highest to the lowest degree (as in ``numpy.polyval``)."""
+
+
+@configclass
 class JointVelocityActionCfg(JointActionCfg):
     """Configuration for the joint velocity action term.
 
