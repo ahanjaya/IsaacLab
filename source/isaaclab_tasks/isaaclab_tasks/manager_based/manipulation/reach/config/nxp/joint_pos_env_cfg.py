@@ -85,23 +85,28 @@ class ActionsCfg:
 class CommandsCfg:
     """Command terms for the MDP."""
 
-    left_ee_pose = mdp.UniformPositionCommandCfg(
+    # position + orientation targets sampled from the arm's forward kinematics, so every target is reachable
+    # by the 5-DOF arm; the position ranges define the workspace box the targets must lie in
+
+    left_ee_pose = mdp.ReachablePoseCommandCfg(
         asset_name="robot",
         body_name="left_ee_link",
+        joint_names=NXP_LEFT_ARM_JOINT_NAMES,
         resampling_time_range=(4.0, 4.0),
         debug_vis=True,
-        ranges=mdp.UniformPositionCommandCfg.Ranges(
+        ranges=mdp.ReachablePoseCommandCfg.Ranges(
             pos_x=(0.2, 0.4),
             pos_y=(0.1, 0.5),
             pos_z=(0.05, 0.5),
         ),
     )
-    right_ee_pose = mdp.UniformPositionCommandCfg(
+    right_ee_pose = mdp.ReachablePoseCommandCfg(
         asset_name="robot",
         body_name="right_ee_link",
+        joint_names=NXP_RIGHT_ARM_JOINT_NAMES,
         resampling_time_range=(4.0, 4.0),
         debug_vis=True,
-        ranges=mdp.UniformPositionCommandCfg.Ranges(
+        ranges=mdp.ReachablePoseCommandCfg.Ranges(
             pos_x=(0.2, 0.4),
             pos_y=(-0.5, -0.1),
             pos_z=(0.05, 0.5),
@@ -137,6 +142,13 @@ class ObservationsCfg:
             func=mdp.joint_vel_rel,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_RIGHT_ARM_JOINT_NAMES, preserve_order=True)},
             noise=Unoise(n_min=-0.01, n_max=0.01),
+        )
+        # end-effector poses in the root frame as dual quaternions (8 values each)
+        left_ee_dual_quat = ObsTerm(
+            func=mdp.body_dual_quaternion_b, params={"asset_cfg": SceneEntityCfg("robot", body_names="left_ee_link")}
+        )
+        right_ee_dual_quat = ObsTerm(
+            func=mdp.body_dual_quaternion_b, params={"asset_cfg": SceneEntityCfg("robot", body_names="right_ee_link")}
         )
         left_pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "left_ee_pose"})
         right_pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "right_ee_pose"})
@@ -183,6 +195,16 @@ class RewardsCfg:
             "std": 0.1,
             "command_name": "right_ee_pose",
         },
+    )
+    left_end_effector_orientation_tracking = RewTerm(
+        func=mdp.orientation_command_error,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names="left_ee_link"), "command_name": "left_ee_pose"},
+    )
+    right_end_effector_orientation_tracking = RewTerm(
+        func=mdp.orientation_command_error,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names="right_ee_link"), "command_name": "right_ee_pose"},
     )
 
     # action penalty
@@ -243,19 +265,19 @@ class NXPReachEnvCfg(ReachEnvCfg):
         # override events
         self.events.reset_robot_joints.params["position_range"] = (0.75, 1.25)
 
-        # # the identified actuator gains are uncertain (e.g. large left/right differences on identical joints), so
-        # # scale each arm joint's stiffness and damping independently by +-25% on every reset for robustness
-        # self.events.randomize_actuator_gains = EventTerm(
-        #     func=mdp.randomize_actuator_gains,
-        #     mode="reset",
-        #     params={
-        #         "asset_cfg": SceneEntityCfg("robot", joint_names=NXP_LEFT_ARM_JOINT_NAMES + NXP_RIGHT_ARM_JOINT_NAMES),
-        #         "stiffness_distribution_params": (0.75, 1.25),
-        #         "damping_distribution_params": (0.75, 1.25),
-        #         "operation": "scale",
-        #         "distribution": "uniform",
-        #     },
-        # )
+        # the identified actuator gains are uncertain (e.g. large left/right differences on identical joints), so
+        # scale each arm joint's stiffness and damping independently by +-25% on every reset for robustness
+        self.events.randomize_actuator_gains = EventTerm(
+            func=mdp.randomize_actuator_gains,
+            mode="reset",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=NXP_LEFT_ARM_JOINT_NAMES + NXP_RIGHT_ARM_JOINT_NAMES),
+                "stiffness_distribution_params": (0.75, 1.25),
+                "damping_distribution_params": (0.75, 1.25),
+                "operation": "scale",
+                "distribution": "uniform",
+            },
+        )
 
 
 @configclass
@@ -271,3 +293,6 @@ class NXPReachEnvCfg_PLAY(NXPReachEnvCfg):
         self.observations.policy.enable_corruption = False
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.randomize_actuator_gains = None
+        # fewer envs means fewer forward kinematics samples per batch, so use a smaller reachable pose table
+        self.commands.left_ee_pose.num_samples = 2000
+        self.commands.right_ee_pose.num_samples = 2000
