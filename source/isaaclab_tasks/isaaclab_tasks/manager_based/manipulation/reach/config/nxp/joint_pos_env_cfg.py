@@ -143,13 +143,19 @@ class ObservationsCfg:
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=NXP_RIGHT_ARM_JOINT_NAMES, preserve_order=True)},
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
-        # end-effector poses in the root frame as dual quaternions (8 values each)
-        left_ee_dual_quat = ObsTerm(
-            func=mdp.body_dual_quaternion_b, params={"asset_cfg": SceneEntityCfg("robot", body_names="left_ee_link")}
+        left_ee_pose = ObsTerm(
+            func=mdp.body_pose_b, params={"asset_cfg": SceneEntityCfg("robot", body_names="left_ee_link")}
         )
-        right_ee_dual_quat = ObsTerm(
-            func=mdp.body_dual_quaternion_b, params={"asset_cfg": SceneEntityCfg("robot", body_names="right_ee_link")}
+        right_ee_pose = ObsTerm(
+            func=mdp.body_pose_b, params={"asset_cfg": SceneEntityCfg("robot", body_names="right_ee_link")}
         )
+        # # end-effector poses in the root frame as dual quaternions (8 values each)
+        # left_ee_dual_quat = ObsTerm(
+        #     func=mdp.body_dual_quaternion_b, params={"asset_cfg": SceneEntityCfg("robot", body_names="left_ee_link")}
+        # )
+        # right_ee_dual_quat = ObsTerm(
+        #     func=mdp.body_dual_quaternion_b, params={"asset_cfg": SceneEntityCfg("robot", body_names="right_ee_link")}
+        # )
         left_pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "left_ee_pose"})
         right_pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "right_ee_pose"})
         left_actions = ObsTerm(func=mdp.last_action, params={"action_name": "left_arm_action"})

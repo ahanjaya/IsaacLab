@@ -17,6 +17,23 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
+def body_pose_b(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Pose of a body in the asset's root frame.
+
+    Returns ``[x, y, z, qw, qx, qy, qz]`` with shape (num_envs, 7), matching the layout of the pose commands. Since
+    ``q`` and ``-q`` describe the same rotation, the quaternion is chosen with a non-negative real part.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    body_id = asset_cfg.body_ids[0]
+    pos_b, quat_b = subtract_frame_transforms(
+        asset.data.root_pos_w,
+        asset.data.root_quat_w,
+        asset.data.body_pos_w[:, body_id],
+        asset.data.body_quat_w[:, body_id],
+    )
+    return torch.cat([pos_b, quat_unique(quat_b)], dim=-1)
+
+
 def body_dual_quaternion_b(env: ManagerBasedEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Pose of a body in the asset's root frame as a unit dual quaternion.
 
