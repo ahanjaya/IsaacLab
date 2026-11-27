@@ -61,7 +61,7 @@ class NXPFlatEnvCfg_PLAY(NXPFlatEnvCfg):
         self.observations.proprioceptive.enable_corruption = False
 
         # commands
-        self.use_teleop = True
+        self.use_teleop = False
         if not self.use_teleop:
             return
 

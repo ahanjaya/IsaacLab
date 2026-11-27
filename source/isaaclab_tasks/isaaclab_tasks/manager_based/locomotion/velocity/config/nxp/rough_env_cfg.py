@@ -51,7 +51,14 @@ NXP_JOINT_NAMES = [
     "right_shoulder_yaw_joint",
     "left_elbow_joint",
     "right_elbow_joint",
+    "left_wrist_yaw_joint",
+    "right_wrist_yaw_joint",
 ]
+
+# The elbows are closed-loop (nonlinear) joints; fitted 5th order polynomial (highest degree first):
+# y = 0.145x^5 - 0.5295x^4 + 0.6947x^3 - 0.2563x^2 + 1.032x - 0.0062, where x is the scaled action.
+NXP_ELBOW_JOINT_NAMES = ["left_elbow_joint", "right_elbow_joint"]
+NXP_ELBOW_POLY_COEFFS = [0.145, -0.5295, 0.6947, -0.2563, 1.032, -0.0062]
 
 # GAC (Grid Adaptive Config)
 NXP_GAC_CFG = mdp.GridAdaptiveConfig()
@@ -61,12 +68,14 @@ NXP_GAC_CFG = mdp.GridAdaptiveConfig()
 class NXPActions(ActionsCfg):
     """Action specifications for the MDP."""
 
-    joint_pos = mdp.RelativeJointPositionActionCfg(
+    joint_pos = mdp.PolynomialRelativeJointPositionActionCfg(
         asset_name="robot",
         joint_names=NXP_JOINT_NAMES,
         scale=0.05,
         preserve_order=True,
         use_zero_offset=True,
+        polynomial_joint_names=NXP_ELBOW_JOINT_NAMES,
+        polynomial_coefficients=NXP_ELBOW_POLY_COEFFS,
     )
 
 
@@ -129,7 +138,7 @@ class NXPRewards(RewardsCfg):
     joint_deviation_arms = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
-        params={"asset_cfg": SceneEntity("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*"])},
+        params={"asset_cfg": SceneEntity("robot", joint_names=[".*_shoulder_.*", ".*_elbow_.*", ".*_wrist_yaw_.*"])},
     )
 
     # Upright posture: L1 keeps a gradient near zero tilt, so the policy cannot lean to accelerate
@@ -365,7 +374,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         if self.command_type == "gac":
             self.commands.base_velocity.lin_vel_xy_std = track_lin_vel_xy_std
             self.commands.base_velocity.ang_vel_z_std = track_ang_vel_z_std
-            
+
             # lin_vel_x / ang_vel_z are sampled from the GAC grid, not from `ranges`
             self.commands.base_velocity.gac_config.linvel_thresh = 0.75
             self.commands.base_velocity.gac_config.angvel_thresh = 0.75
@@ -419,7 +428,7 @@ class NXPRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.undesired_contacts.weight = -1.0
         self.rewards.undesired_contacts.params["sensor_cfg"] = SceneEntity(
             "contact_forces",
-            body_names=[".*_upper_arm_link", ".*_hip_yaw_link", "torso_link"],
+            body_names=[".*_shoulder_roll_link", ".*_wrist_yaw_link", ".*_hip_yaw_link", "torso_link"],
         )
         self.rewards.joint_deviation_hip.weight = -0.2
         self.rewards.joint_deviation_knee.weight = -0.01

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -234,6 +235,50 @@ class RelativeJointPositionAction(JointAction):
         current_actions = self.processed_actions + self._asset.data.joint_pos[:, self._joint_ids]
         # set position targets
         self._asset.set_joint_position_target(current_actions, joint_ids=self._joint_ids)
+
+
+class PolynomialRelativeJointPositionAction(RelativeJointPositionAction):
+    r"""Relative joint position action with a polynomial mapping applied to a subset of the joints.
+
+    Intended for joints whose real response is nonlinear (e.g. closed-loop linkages). For the joints matching
+    :attr:`polynomial_joint_names`, the processed action (:math:`x = \text{scale} \times \text{input action}`) is
+    mapped through the polynomial :math:`y = \sum_i c_i x^{n-i}` before being added to the current joint position.
+    Other joints behave exactly like :class:`RelativeJointPositionAction`.
+    """
+
+    cfg: actions_cfg.PolynomialRelativeJointPositionActionCfg
+    """The configuration of the action term."""
+
+    def __init__(self, cfg: actions_cfg.PolynomialRelativeJointPositionActionCfg, env: ManagerBasedEnv):
+        super().__init__(cfg, env)
+        # indices (within this action term) of the joints that use the polynomial
+        self._poly_ids = [
+            i
+            for i, name in enumerate(self._joint_names)
+            if any(re.fullmatch(expr, name) for expr in cfg.polynomial_joint_names)
+        ]
+        if len(self._poly_ids) == 0:
+            raise ValueError(
+                f"None of the joints {self._joint_names} match the polynomial joint names {cfg.polynomial_joint_names}."
+            )
+        if len(cfg.polynomial_coefficients) == 0:
+            raise ValueError("The polynomial coefficients must not be empty.")
+        # coefficients ordered from the highest to the lowest degree
+        self._poly_coeffs = torch.tensor(cfg.polynomial_coefficients, dtype=torch.float32, device=self.device)
+
+    def _polynomial(self, x: torch.Tensor) -> torch.Tensor:
+        # Horner's method
+        y = torch.full_like(x, self._poly_coeffs[0].item())
+        for coeff in self._poly_coeffs[1:]:
+            y = y * x + coeff
+        return y
+
+    def apply_actions(self):
+        delta = self.processed_actions.clone()
+        delta[:, self._poly_ids] = self._polynomial(delta[:, self._poly_ids])
+        self._asset.set_joint_position_target(
+            delta + self._asset.data.joint_pos[:, self._joint_ids], joint_ids=self._joint_ids
+        )
 
 
 class JointVelocityAction(JointAction):
