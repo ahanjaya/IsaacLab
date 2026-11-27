@@ -55,10 +55,17 @@ NXP_JOINT_NAMES = [
     "right_wrist_yaw_joint",
 ]
 
-# The elbows are closed-loop (nonlinear) joints; fitted 5th order polynomial (highest degree first):
-# y = 0.145x^5 - 0.5295x^4 + 0.6947x^3 - 0.2563x^2 + 1.032x - 0.0062, where x is the scaled action.
-NXP_ELBOW_JOINT_NAMES = ["left_elbow_joint", "right_elbow_joint"]
-NXP_ELBOW_POLY_COEFFS = [0.145, -0.5295, 0.6947, -0.2563, 1.032, -0.0062]
+# The elbows are closed-loop (nonlinear) joints; fitted 5th order polynomial (highest degree first) for the left elbow:
+# y = p(x) = 0.145x^5 - 0.5295x^4 + 0.6947x^3 - 0.2563x^2 + 1.032x - 0.0062,
+# mapping the linear command x to the elbow angle y. The scaled action is applied as a delta in x.
+# The right elbow is mirrored, so it uses -p(-x) (the even-degree coefficients flip sign).
+NXP_LEFT_ELBOW_POLY_COEFFS = [0.145, -0.5295, 0.6947, -0.2563, 1.032, -0.0062]
+NXP_RIGHT_ELBOW_POLY_COEFFS = [0.145, 0.5295, 0.6947, 0.2563, 1.032, 0.0062]
+NXP_ELBOW_POLY_COEFFS = {
+    "left_elbow_joint": NXP_LEFT_ELBOW_POLY_COEFFS,
+    "right_elbow_joint": NXP_RIGHT_ELBOW_POLY_COEFFS,
+}
+NXP_ELBOW_JOINT_NAMES = list(NXP_ELBOW_POLY_COEFFS.keys())
 
 # GAC (Grid Adaptive Config)
 NXP_GAC_CFG = mdp.GridAdaptiveConfig()

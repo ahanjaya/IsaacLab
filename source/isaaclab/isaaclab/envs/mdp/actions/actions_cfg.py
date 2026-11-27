@@ -85,8 +85,14 @@ class PolynomialRelativeJointPositionActionCfg(RelativeJointPositionActionCfg):
 
     polynomial_joint_names: list[str] = MISSING
     """Joint names or regex expressions (subset of :attr:`joint_names`) the polynomial is applied to."""
-    polynomial_coefficients: list[float] = MISSING
-    """Polynomial coefficients ordered from the highest to the lowest degree (as in ``numpy.polyval``)."""
+    polynomial_coefficients: list[float] | dict[str, list[float]] = MISSING
+    """Polynomial coefficients ordered from the highest to the lowest degree (as in ``numpy.polyval``).
+
+    Either a single list shared by all polynomial joints, or a dictionary mapping joint names or regex expressions
+    to per-joint coefficients (each polynomial joint must match exactly one key).
+
+    They describe the absolute mapping from the linear command space to the joint position. The polynomial must be
+    strictly monotonic so that it can be inverted."""
 
 
 @configclass

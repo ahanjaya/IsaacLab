@@ -5,6 +5,7 @@
 
 
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -41,6 +42,13 @@ NXP_RIGHT_ARM_JOINT_NAMES = [
     "right_wrist_yaw_joint",
 ]
 
+# The elbows are closed-loop (nonlinear) joints; fitted 5th order polynomial (highest degree first) for the left elbow:
+# y = p(x) = 0.145x^5 - 0.5295x^4 + 0.6947x^3 - 0.2563x^2 + 1.032x - 0.0062,
+# mapping the linear command x to the elbow angle y. The scaled action is applied as a delta in x.
+# The right elbow is mirrored, so it uses -p(-x) (the even-degree coefficients flip sign).
+NXP_LEFT_ELBOW_POLY_COEFFS = [0.145, -0.5295, 0.6947, -0.2563, 1.032, -0.0062]
+NXP_RIGHT_ELBOW_POLY_COEFFS = [0.145, 0.5295, 0.6947, 0.2563, 1.032, 0.0062]
+
 
 @configclass
 class ActionsCfg:
@@ -53,19 +61,23 @@ class ActionsCfg:
     # incremental deltas from the current joint position keeps the tracked error inside (or close to) the
     # actuator's rated torque-speed region, avoiding the large-jump-induced saturation that otherwise amplifies
     # the (real, identified) left/right actuator differences into asymmetric tracking/joint-usage behavior.
-    left_arm_action = mdp.RelativeJointPositionActionCfg(
+    left_arm_action = mdp.PolynomialRelativeJointPositionActionCfg(
         asset_name="robot",
         joint_names=NXP_LEFT_ARM_JOINT_NAMES,
         scale=0.05,
         preserve_order=True,
         use_zero_offset=True,
+        polynomial_joint_names=["left_elbow_joint"],
+        polynomial_coefficients=NXP_LEFT_ELBOW_POLY_COEFFS,
     )
-    right_arm_action = mdp.RelativeJointPositionActionCfg(
+    right_arm_action = mdp.PolynomialRelativeJointPositionActionCfg(
         asset_name="robot",
         joint_names=NXP_RIGHT_ARM_JOINT_NAMES,
         scale=0.05,
         preserve_order=True,
         use_zero_offset=True,
+        polynomial_joint_names=["right_elbow_joint"],
+        polynomial_coefficients=NXP_RIGHT_ELBOW_POLY_COEFFS,
     )
 
 
@@ -231,6 +243,20 @@ class NXPReachEnvCfg(ReachEnvCfg):
         # override events
         self.events.reset_robot_joints.params["position_range"] = (0.75, 1.25)
 
+        # # the identified actuator gains are uncertain (e.g. large left/right differences on identical joints), so
+        # # scale each arm joint's stiffness and damping independently by +-25% on every reset for robustness
+        # self.events.randomize_actuator_gains = EventTerm(
+        #     func=mdp.randomize_actuator_gains,
+        #     mode="reset",
+        #     params={
+        #         "asset_cfg": SceneEntityCfg("robot", joint_names=NXP_LEFT_ARM_JOINT_NAMES + NXP_RIGHT_ARM_JOINT_NAMES),
+        #         "stiffness_distribution_params": (0.75, 1.25),
+        #         "damping_distribution_params": (0.75, 1.25),
+        #         "operation": "scale",
+        #         "distribution": "uniform",
+        #     },
+        # )
+
 
 @configclass
 class NXPReachEnvCfg_PLAY(NXPReachEnvCfg):
@@ -244,3 +270,4 @@ class NXPReachEnvCfg_PLAY(NXPReachEnvCfg):
         # disable randomization for play
         self.observations.policy.enable_corruption = False
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+        self.events.randomize_actuator_gains = None

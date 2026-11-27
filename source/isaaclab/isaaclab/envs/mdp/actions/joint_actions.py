@@ -240,10 +240,19 @@ class RelativeJointPositionAction(JointAction):
 class PolynomialRelativeJointPositionAction(RelativeJointPositionAction):
     r"""Relative joint position action with a polynomial mapping applied to a subset of the joints.
 
-    Intended for joints whose real response is nonlinear (e.g. closed-loop linkages). For the joints matching
-    :attr:`polynomial_joint_names`, the processed action (:math:`x = \text{scale} \times \text{input action}`) is
-    mapped through the polynomial :math:`y = \sum_i c_i x^{n-i}` before being added to the current joint position.
-    Other joints behave exactly like :class:`RelativeJointPositionAction`.
+    Intended for joints whose real response is nonlinear (e.g. closed-loop linkages), described by the absolute
+    mapping :math:`q = p(x) = \sum_i c_i x^{n-i}` from the linear command space :math:`x` to the joint position
+    :math:`q`. For the joints matching :attr:`polynomial_joint_names`, the processed action
+    (:math:`\Delta x = \text{scale} \times \text{input action}`) is applied in the command space:
+
+    .. math::
+
+        q_{target} = p(p^{-1}(q_{current}) + \Delta x)
+
+    so a zero action holds the current position. Each joint may use its own polynomial (e.g. mirrored left/right
+    joints, where the mirrored mapping is :math:`-p(-x)`). The polynomial must be strictly monotonic so that
+    :math:`p^{-1}` exists; it is evaluated with Newton's method. Other joints behave exactly like
+    :class:`RelativeJointPositionAction`.
     """
 
     cfg: actions_cfg.PolynomialRelativeJointPositionActionCfg
@@ -261,24 +270,54 @@ class PolynomialRelativeJointPositionAction(RelativeJointPositionAction):
             raise ValueError(
                 f"None of the joints {self._joint_names} match the polynomial joint names {cfg.polynomial_joint_names}."
             )
-        if len(cfg.polynomial_coefficients) == 0:
-            raise ValueError("The polynomial coefficients must not be empty.")
-        # coefficients ordered from the highest to the lowest degree
-        self._poly_coeffs = torch.tensor(cfg.polynomial_coefficients, dtype=torch.float32, device=self.device)
+        # per-joint coefficients ordered from the highest to the lowest degree, shape (num_poly_joints, degree + 1)
+        poly_coeffs = [
+            self._resolve_coefficients(self._joint_names[i], cfg.polynomial_coefficients) for i in self._poly_ids
+        ]
+        max_len = max(len(c) for c in poly_coeffs)
+        poly_coeffs = [[0.0] * (max_len - len(c)) + list(c) for c in poly_coeffs]
+        self._poly_coeffs = torch.tensor(poly_coeffs, dtype=torch.float32, device=self.device)
+        degree = max_len - 1
+        self._poly_deriv_coeffs = self._poly_coeffs[:, :-1] * torch.arange(degree, 0, -1, device=self.device)
 
-    def _polynomial(self, x: torch.Tensor) -> torch.Tensor:
-        # Horner's method
-        y = torch.full_like(x, self._poly_coeffs[0].item())
-        for coeff in self._poly_coeffs[1:]:
-            y = y * x + coeff
+    @staticmethod
+    def _resolve_coefficients(joint_name: str, coefficients: list[float] | dict[str, list[float]]) -> list[float]:
+        if isinstance(coefficients, dict):
+            matches = [coeffs for expr, coeffs in coefficients.items() if re.fullmatch(expr, joint_name)]
+            if len(matches) != 1:
+                raise ValueError(
+                    f"Joint '{joint_name}' must match exactly one key of the polynomial coefficients"
+                    f" {list(coefficients.keys())}, but matched {len(matches)}."
+                )
+            coefficients = matches[0]
+        if len(coefficients) < 2:
+            raise ValueError(f"The polynomial coefficients for joint '{joint_name}' must be at least of degree 1.")
+        return coefficients
+
+    @staticmethod
+    def _polyval(coeffs: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+        # Horner's method; coeffs has shape (num_poly_joints, degree + 1) and x has shape (num_envs, num_poly_joints)
+        y = torch.zeros_like(x)
+        for k in range(coeffs.shape[1]):
+            y = y * x + coeffs[:, k]
         return y
 
+    def _polynomial_inverse(self, q: torch.Tensor, num_iters: int = 6) -> torch.Tensor:
+        # Newton's method; the identity is a good initial guess for near-linear joint mappings
+        x = q.clone()
+        for _ in range(num_iters):
+            x = x - (self._polyval(self._poly_coeffs, x) - q) / self._polyval(self._poly_deriv_coeffs, x)
+        return x
+
     def apply_actions(self):
-        delta = self.processed_actions.clone()
-        delta[:, self._poly_ids] = self._polynomial(delta[:, self._poly_ids])
-        self._asset.set_joint_position_target(
-            delta + self._asset.data.joint_pos[:, self._joint_ids], joint_ids=self._joint_ids
+        current_pos = self._asset.data.joint_pos[:, self._joint_ids]
+        target_pos = current_pos + self.processed_actions
+        poly_current = current_pos[:, self._poly_ids]
+        poly_delta = self.processed_actions[:, self._poly_ids]
+        target_pos[:, self._poly_ids] = self._polyval(
+            self._poly_coeffs, self._polynomial_inverse(poly_current) + poly_delta
         )
+        self._asset.set_joint_position_target(target_pos, joint_ids=self._joint_ids)
 
 
 class JointVelocityAction(JointAction):
