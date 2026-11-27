@@ -30,6 +30,7 @@ NXP_LEFT_ARM_JOINT_NAMES = [
     "left_shoulder_roll_joint",
     "left_shoulder_yaw_joint",
     "left_elbow_joint",
+    "left_wrist_yaw_joint",
 ]
 
 NXP_RIGHT_ARM_JOINT_NAMES = [
@@ -37,6 +38,7 @@ NXP_RIGHT_ARM_JOINT_NAMES = [
     "right_shoulder_roll_joint",
     "right_shoulder_yaw_joint",
     "right_elbow_joint",
+    "right_wrist_yaw_joint",
 ]
 
 
