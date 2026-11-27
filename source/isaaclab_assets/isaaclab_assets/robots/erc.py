@@ -247,32 +247,23 @@ NXP_V1_HUMANOID_CFG = ArticulationCfg(
         ),
         "rs05": DCMotorCfg(
             joint_names_expr=[".*_wrist_yaw_.*"],
-            saturation_effort=5.5 * 2.0,
-            effort_limit=5.5 * 2.0,
-            velocity_limit=50.0,
-            stiffness={
-                "left_wrist_yaw_joint": 306.8630,
-                "right_wrist_yaw_joint": 499.6256,
-            },  # P gain in Nm/rad
-            damping={
-                "left_wrist_yaw_joint": 0.2487,
-                "right_wrist_yaw_joint": 3.3666,
-            },  # D gain in Nm s/rad
-            armature={
-                "left_wrist_yaw_joint": 0.0400,
-                "right_wrist_yaw_joint": 0.0601,
-            },  # rotor inertia (kg m^2)
+            saturation_effort=5.5,
+            effort_limit=5.5,
+            velocity_limit=50.00,
+            stiffness={"left_wrist_yaw_joint": 388.8442, "right_wrist_yaw_joint": 389.4861},  # P gain in Nm/rad
+            damping={"left_wrist_yaw_joint": 2.1758, "right_wrist_yaw_joint": 2.2008},  # D gain in Nm s/rad
+            armature={"left_wrist_yaw_joint": 0.0764, "right_wrist_yaw_joint": 0.0739},  # rotor inertia (kg m^2)
             friction={
-                "left_wrist_yaw_joint": 0.4852,
-                "right_wrist_yaw_joint": 0.0962,
+                "left_wrist_yaw_joint": 0.2435,
+                "right_wrist_yaw_joint": 0.2578,
             },  # static (Coulomb) friction coefficient (Nm)
             dynamic_friction={
-                "left_wrist_yaw_joint": 0.4852,
-                "right_wrist_yaw_joint": 0.0962,
+                "left_wrist_yaw_joint": 0.2435,
+                "right_wrist_yaw_joint": 0.2578,
             },  # dynamic friction coefficient (Nm); equal to static for Coulomb model
             viscous_friction={
-                "left_wrist_yaw_joint": 1.9294,
-                "right_wrist_yaw_joint": 0.5984,
+                "left_wrist_yaw_joint": 1.3637,
+                "right_wrist_yaw_joint": 1.3517,
             },  # viscous friction coefficient (Nm s/rad)
         ),
         "rs00": DCMotorCfg(
@@ -292,7 +283,7 @@ NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
         usd_path=os.path.join(
             os.getcwd(),
             NXP_DIR,
-            "nxp_v1_upper_body/nxp_v1_upper_body.usd",
+            "nxp_v1_upper_body_humanoid/nxp_v1_upper_body_humanoid.usd",
         ),
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
@@ -322,78 +313,101 @@ NXP_V1_UPPER_BODY_CFG = ArticulationCfg(
             "right_shoulder_yaw_joint": 0.1309,
             "left_elbow_joint": 0.1745,
             "right_elbow_joint": -0.1745,
+            "left_wrist_yaw_joint": 0.0,
+            "right_wrist_yaw_joint": 0.0,
         },
         joint_vel={".*": 0.0},
     ),
     soft_joint_pos_limit_factor=0.9,
     actuators={
-        "arm": DCMotorCfg(
+        "rs02": DCMotorCfg(
             joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*"],
             saturation_effort=17.0,
             effort_limit=17.0,
             velocity_limit=37.68,
             stiffness={
-                "left_shoulder_pitch_joint": 222.121582,
-                "right_shoulder_pitch_joint": 285.139221,
-                "left_shoulder_roll_joint": 490.476776,
-                "right_shoulder_roll_joint": 491.228821,
-                "left_shoulder_yaw_joint": 498.726837,
-                "right_shoulder_yaw_joint": 497.425354,
-                "left_elbow_joint": 498.454926,
-                "right_elbow_joint": 499.244324,
+                "left_shoulder_pitch_joint": 309.4360,
+                "right_shoulder_pitch_joint": 261.8646,
+                "left_shoulder_roll_joint": 461.0771,
+                "right_shoulder_roll_joint": 480.4795,
+                "left_shoulder_yaw_joint": 396.9220,
+                "right_shoulder_yaw_joint": 384.2678,
+                "left_elbow_joint": 401.1511,
+                "right_elbow_joint": 416.4151,
             },  # P gain in Nm/rad
             damping={
-                "left_shoulder_pitch_joint": 1.196230,
-                "right_shoulder_pitch_joint": 2.321509,
-                "left_shoulder_roll_joint": 3.956753,
-                "right_shoulder_roll_joint": 4.069930,
-                "left_shoulder_yaw_joint": 1.769438,
-                "right_shoulder_yaw_joint": 1.635402,
-                "left_elbow_joint": 3.328801,
-                "right_elbow_joint": 2.782490,
+                "left_shoulder_pitch_joint": 0.9994,
+                "right_shoulder_pitch_joint": 0.5102,
+                "left_shoulder_roll_joint": 4.0189,
+                "right_shoulder_roll_joint": 4.2484,
+                "left_shoulder_yaw_joint": 2.2435,
+                "right_shoulder_yaw_joint": 2.0447,
+                "left_elbow_joint": 2.5897,
+                "right_elbow_joint": 2.6201,
             },  # D gain in Nm s/rad
             armature={
-                "left_shoulder_pitch_joint": 0.010347,
-                "right_shoulder_pitch_joint": 0.016394,
-                "left_shoulder_roll_joint": 0.009989,
-                "right_shoulder_roll_joint": 0.017516,
-                "left_shoulder_yaw_joint": 0.002867,
-                "right_shoulder_yaw_joint": 0.020833,
-                "left_elbow_joint": 0.108637,
-                "right_elbow_joint": 0.084163,
+                "left_shoulder_pitch_joint": 0.0443,
+                "right_shoulder_pitch_joint": 0.0421,
+                "left_shoulder_roll_joint": 0.0016,
+                "right_shoulder_roll_joint": 0.0015,
+                "left_shoulder_yaw_joint": 0.1212,
+                "right_shoulder_yaw_joint": 0.0273,
+                "left_elbow_joint": 0.1364,
+                "right_elbow_joint": 0.1363,
             },  # rotor inertia (kg m^2)
             friction={
-                "left_shoulder_pitch_joint": 0.286563,
-                "right_shoulder_pitch_joint": 0.492618,
-                "left_shoulder_roll_joint": 0.025404,
-                "right_shoulder_roll_joint": 0.026012,
-                "left_shoulder_yaw_joint": 0.488045,
-                "right_shoulder_yaw_joint": 0.495313,
-                "left_elbow_joint": 0.484832,
-                "right_elbow_joint": 0.488344,
+                "left_shoulder_pitch_joint": 0.2572,
+                "right_shoulder_pitch_joint": 0.2640,
+                "left_shoulder_roll_joint": 0.2285,
+                "right_shoulder_roll_joint": 0.2395,
+                "left_shoulder_yaw_joint": 0.2350,
+                "right_shoulder_yaw_joint": 0.2535,
+                "left_elbow_joint": 0.2512,
+                "right_elbow_joint": 0.2501,
             },  # static (Coulomb) friction coefficient (Nm)
             dynamic_friction={
-                "left_shoulder_pitch_joint": 0.286563,
-                "right_shoulder_pitch_joint": 0.492618,
-                "left_shoulder_roll_joint": 0.025404,
-                "right_shoulder_roll_joint": 0.026012,
-                "left_shoulder_yaw_joint": 0.488045,
-                "right_shoulder_yaw_joint": 0.495313,
-                "left_elbow_joint": 0.484832,
-                "right_elbow_joint": 0.488344,
+                "left_shoulder_pitch_joint": 0.2572,
+                "right_shoulder_pitch_joint": 0.2640,
+                "left_shoulder_roll_joint": 0.2285,
+                "right_shoulder_roll_joint": 0.2395,
+                "left_shoulder_yaw_joint": 0.2350,
+                "right_shoulder_yaw_joint": 0.2535,
+                "left_elbow_joint": 0.2512,
+                "right_elbow_joint": 0.2501,
             },  # dynamic friction coefficient (Nm); equal to static for Coulomb model
             viscous_friction={
-                "left_shoulder_pitch_joint": 0.919618,
-                "right_shoulder_pitch_joint": 0.403605,
-                "left_shoulder_roll_joint": 0.149416,
-                "right_shoulder_roll_joint": 0.161509,
-                "left_shoulder_yaw_joint": 2.833519,
-                "right_shoulder_yaw_joint": 3.108745,
-                "left_elbow_joint": 0.326940,
-                "right_elbow_joint": 1.044234,
+                "left_shoulder_pitch_joint": 1.7251,
+                "right_shoulder_pitch_joint": 1.7153,
+                "left_shoulder_roll_joint": 0.1600,
+                "right_shoulder_roll_joint": 0.1469,
+                "left_shoulder_yaw_joint": 1.8878,
+                "right_shoulder_yaw_joint": 1.9926,
+                "left_elbow_joint": 1.0550,
+                "right_elbow_joint": 1.0374,
             },  # viscous friction coefficient (Nm s/rad)
         ),
-        "head": DCMotorCfg(
+        "rs05": DCMotorCfg(
+            joint_names_expr=[".*_wrist_yaw_.*"],
+            saturation_effort=5.5,
+            effort_limit=5.5,
+            velocity_limit=50.00,
+            stiffness={"left_wrist_yaw_joint": 388.8442, "right_wrist_yaw_joint": 389.4861},  # P gain in Nm/rad
+            damping={"left_wrist_yaw_joint": 2.1758, "right_wrist_yaw_joint": 2.2008},  # D gain in Nm s/rad
+            armature={"left_wrist_yaw_joint": 0.0764, "right_wrist_yaw_joint": 0.0739},  # rotor inertia (kg m^2)
+            friction={
+                "left_wrist_yaw_joint": 0.2435,
+                "right_wrist_yaw_joint": 0.2578,
+            },  # static (Coulomb) friction coefficient (Nm)
+            dynamic_friction={
+                "left_wrist_yaw_joint": 0.2435,
+                "right_wrist_yaw_joint": 0.2578,
+            },  # dynamic friction coefficient (Nm); equal to static for Coulomb model
+            viscous_friction={
+                "left_wrist_yaw_joint": 1.3637,
+                "right_wrist_yaw_joint": 1.3517,
+            },  # viscous friction coefficient (Nm s/rad)
+        ),
+        "rs00": DCMotorCfg(
             joint_names_expr=["head_.*"],
             saturation_effort=17.0,
             effort_limit=5.0,
